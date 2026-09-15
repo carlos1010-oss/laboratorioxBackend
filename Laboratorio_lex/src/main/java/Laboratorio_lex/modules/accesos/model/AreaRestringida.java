@@ -1,0 +1,56 @@
+package Laboratorio_lex.modules.accesos;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.OffsetDateTime;
+
+@Entity
+@Table(name = "areas_restringidas", schema = "zone_control")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class AreaRestringida {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Column(nullable = false, unique = true, length = 20)
+    private String codigo;
+
+    @Column(nullable = false, length = 100)
+    private String nombre;
+
+    @Column(name = "nivel_riesgo", nullable = false, length = 20)
+    private String nivelRiesgo; // 'BAJO', 'MEDIO', 'ALTO', 'CRITICO'
+
+    @Column(length = 255)
+    private String descripcion;
+
+    @Column(nullable = false)
+    private Boolean activa;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now();
+        if (this.activa == null)
+            this.activa = true;
+        if (this.nivelRiesgo == null)
+            this.nivelRiesgo = "MEDIO";
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = OffsetDateTime.now();
+    }
+}
