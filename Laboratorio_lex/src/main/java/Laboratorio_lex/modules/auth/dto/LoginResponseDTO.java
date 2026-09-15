@@ -10,6 +10,6 @@ import lombok.*;
 public class LoginResponseDTO {
 
     private String token;
-    private String tipoToken; // Ejemplo: "Bearer"
+    private String tipoToken;
     private UsuarioResponseDTO usuario;
 }

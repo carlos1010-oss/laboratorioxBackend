@@ -37,12 +37,12 @@ public class Usuario {
     @Column(nullable = false)
     private EstadoUsuario estado;
 
-    @Column(name = "intentos_fallidos", nullable = false)
-    private Short intentosFallidos;
-
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "rol_id", nullable = false)
     private Rol rol;
+
+    @Column(name = "intentos_fallidos", nullable = false)
+    private Short intentosFallidos;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
