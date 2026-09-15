@@ -1,7 +1,9 @@
 package Laboratorio_lex.modules.personal.service;
 
-import Laboratorio_lex.modules.personal.dto.EmpleadoResponseDTO;
+import Laboratorio_lex.common.exception.BadRequestException;
+import Laboratorio_lex.common.exception.ResourceNotFoundException;
 import Laboratorio_lex.modules.personal.dto.EmpleadoRequestDTO;
+import Laboratorio_lex.modules.personal.dto.EmpleadoResponseDTO;
 import Laboratorio_lex.modules.personal.model.Departamento;
 import Laboratorio_lex.modules.personal.model.Empleado;
 import Laboratorio_lex.modules.personal.model.EstadoEmpleado;
@@ -31,25 +33,26 @@ public class EmpleadoService {
     @Transactional(readOnly = true)
     public EmpleadoResponseDTO obtenerPorId(Long id) {
         Empleado empleado = empleadoRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Empleado no encontrado con ID: " + id));
         return convertirADTO(empleado);
     }
 
     @Transactional
     public EmpleadoResponseDTO crearEmpleado(EmpleadoRequestDTO dto) {
         if (empleadoRepository.existsByNumeroDocumento(dto.getNumeroDocumento())) {
-            throw new RuntimeException("Ya existe un empleado con el documento: " + dto.getNumeroDocumento());
+            throw new BadRequestException(
+                    "Ya existe un empleado registrado con el documento: " + dto.getNumeroDocumento());
         }
 
         if (dto.getCodigoTarjetaRfid() != null
                 && empleadoRepository.existsByCodigoTarjetaRfid(dto.getCodigoTarjetaRfid())) {
-            throw new RuntimeException(
+            throw new BadRequestException(
                     "La tarjeta RFID ya está asignada a otro empleado: " + dto.getCodigoTarjetaRfid());
         }
 
         Departamento departamento = departamentoRepository.findById(dto.getDepartamentoId())
-                .orElseThrow(
-                        () -> new RuntimeException("Departamento no encontrado con ID: " + dto.getDepartamentoId()));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Departamento no encontrado con ID: " + dto.getDepartamentoId()));
 
         Empleado empleado = Empleado.builder()
                 .tipoDocumento(dto.getTipoDocumento())
@@ -70,7 +73,7 @@ public class EmpleadoService {
     @Transactional
     public EmpleadoResponseDTO cambiarEstado(Long id, EstadoEmpleado nuevoEstado, String motivo) {
         Empleado empleado = empleadoRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Empleado no encontrado con ID: " + id));
 
         empleado.setEstado(nuevoEstado);
         empleado.setMotivoCambioEstado(motivo);
