@@ -1,4 +1,4 @@
-package Laboratorio_lex.modules.accesos;
+package Laboratorio_lex.modules.accesos.model;
 
 import jakarta.persistence.*;
 import lombok.*;
