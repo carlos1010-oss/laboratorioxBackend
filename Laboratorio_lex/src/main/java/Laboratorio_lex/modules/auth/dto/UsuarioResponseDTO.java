@@ -2,6 +2,8 @@ package Laboratorio_lex.modules.auth.dto;
 
 import lombok.*;
 
+import java.time.OffsetDateTime;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -16,4 +18,5 @@ public class UsuarioResponseDTO {
     private String correo;
     private String estado;
     private String rol;
+    private OffsetDateTime createdAt;
 }

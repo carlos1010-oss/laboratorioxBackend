@@ -30,19 +30,19 @@ public class Usuario {
     @Column(nullable = false, unique = true, length = 150)
     private String correo;
 
-    @Column(name = "password_hash", nullable = false, length = 255)
+    @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EstadoUsuario estado;
 
+    @Column(name = "intentos_fallidos", nullable = false)
+    private Short intentosFallidos;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "rol_id", nullable = false)
     private Rol rol;
-
-    @Column(name = "intentos_fallidos", nullable = false)
-    private Short intentosFallidos;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -54,10 +54,9 @@ public class Usuario {
     protected void onCreate() {
         this.createdAt = OffsetDateTime.now();
         this.updatedAt = OffsetDateTime.now();
-        if (this.estado == null)
-            this.estado = EstadoUsuario.ACTIVO;
-        if (this.intentosFallidos == null)
+        if (this.intentosFallidos == null) {
             this.intentosFallidos = (short) 0;
+        }
     }
 
     @PreUpdate
