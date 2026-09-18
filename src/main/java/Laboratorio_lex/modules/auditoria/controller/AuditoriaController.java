@@ -20,6 +20,11 @@ public class AuditoriaController {
 
     // F-33: listado paginado y filtrable por usuario, tipo de operación,
     // módulo/tabla y rango de fechas (yyyy-MM-dd, día completo).
+    @GetMapping("/{id}")
+    public ResponseEntity<AuditoriaResponseDTO> obtenerDetalleEvento(@PathVariable java.util.UUID id) {
+        return ResponseEntity.ok(auditoriaService.obtenerPorId(id));
+    }
+
     @GetMapping({"", "/bitacora"})
     public ResponseEntity<Page<AuditoriaResponseDTO>> listarEventos(
             @RequestParam(required = false) Long usuarioId,
