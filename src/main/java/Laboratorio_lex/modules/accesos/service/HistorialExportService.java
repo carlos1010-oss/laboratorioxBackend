@@ -2,6 +2,11 @@ package Laboratorio_lex.modules.accesos.service;
 
 import Laboratorio_lex.common.exception.BadRequestException;
 import Laboratorio_lex.modules.accesos.dto.ResultadoAccesoResponseDTO;
+import Laboratorio_lex.modules.auditoria.dto.AuditoriaRequestDTO;
+import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
+import Laboratorio_lex.modules.auditoria.service.AuditoriaService;
+import Laboratorio_lex.modules.auditoria.util.AuditoriaContexto;
+import Laboratorio_lex.modules.auth.model.Usuario;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
@@ -27,6 +32,8 @@ public class HistorialExportService {
     };
 
     private final AccesoService accesoService;
+    private final AuditoriaService auditoriaService;
+    private final AuditoriaContexto auditoriaContexto;
 
     public byte[] exportar(String formato, String numeroDocumento, Integer areaId,
             OffsetDateTime fechaInicio, OffsetDateTime fechaFin) {
@@ -36,6 +43,9 @@ public class HistorialExportService {
         List<ResultadoAccesoResponseDTO> registros = accesoService.listarParaExportar(numeroDocumento, areaId,
                 fechaInicio, fechaFin);
 
+        // Registro en la bitácora de auditoría (GxP / 21 CFR Part 11: trazabilidad de descargas)
+        registrarAuditoriaDescarga(formato, registros.size());
+
         return switch (formato.toLowerCase()) {
             case "csv" -> exportarCsv(registros);
             case "html" -> exportarHtml(registros).getBytes(StandardCharsets.UTF_8);
@@ -43,6 +53,24 @@ public class HistorialExportService {
                     "La exportación a PDF está diferida por decisión de diseño; use 'csv' o 'html' (imprimible a PDF desde el navegador).");
             default -> throw new BadRequestException("Formato de exportación no soportado: " + formato);
         };
+    }
+
+    private void registrarAuditoriaDescarga(String formato, int totalRegistros) {
+        try {
+            Usuario usuarioActual = auditoriaContexto.obtenerUsuarioActual();
+            AuditoriaRequestDTO dto = AuditoriaRequestDTO.builder()
+                    .usuarioId(usuarioActual != null ? usuarioActual.getId() : null)
+                    .direccionIp(auditoriaContexto.obtenerIpActual())
+                    .tipoOperacion(TipoOperacion.DESCARGA)
+                    .moduloTabla("historial_accesos")
+                    .valorAnterior(null)
+                    .valorNuevo("{\"formato\":\"" + formato + "\",\"registrosExportados\":" + totalRegistros + "}")
+                    .build();
+
+            auditoriaService.registrarEvento(dto);
+        } catch (Exception e) {
+            System.err.println("Error al registrar auditoría de descarga: " + e.getMessage());
+        }
     }
 
     private byte[] exportarCsv(List<ResultadoAccesoResponseDTO> registros) {

@@ -10,6 +10,12 @@ import java.util.Optional;
 
 @Repository
 public interface TokenRecuperacionRepository extends JpaRepository<TokenRecuperacion, Long> {
-    Optional<TokenRecuperacion> findByTokenHashAndUsadoFalseAndExpiracionAfter(String tokenHash, OffsetDateTime now);
+
+    Optional<TokenRecuperacion> findByTokenHash(String tokenHash);
+
+    Optional<TokenRecuperacion> findByTokenHashAndUsadoFalse(String tokenHash);
+
+    Optional<TokenRecuperacion> findByTokenHashAndUsadoFalseAndExpiracionAfter(String tokenHash, OffsetDateTime ahora);
+
     List<TokenRecuperacion> findByUsuarioId(Long usuarioId);
 }

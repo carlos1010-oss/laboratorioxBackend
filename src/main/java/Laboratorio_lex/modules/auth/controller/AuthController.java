@@ -1,7 +1,6 @@
 package Laboratorio_lex.modules.auth.controller;
 
-import Laboratorio_lex.modules.auth.dto.LoginRequestDTO;
-import Laboratorio_lex.modules.auth.dto.LoginResponseDTO;
+import Laboratorio_lex.modules.auth.dto.*;
 import Laboratorio_lex.modules.auth.model.Usuario;
 import Laboratorio_lex.modules.auth.service.AuthService;
 import jakarta.validation.Valid;
@@ -29,6 +28,21 @@ public class AuthController {
         if (authentication != null && authentication.getPrincipal() instanceof Usuario usuario) {
             authService.cerrarSesion(usuario.getDocumento());
         }
+        return ResponseEntity.ok().build();
+    }
+
+    // F-02: Solicitud de token de recuperación de contraseña
+    @PostMapping("/recuperar-password")
+    public ResponseEntity<RecuperacionResponseDTO> solicitarRecuperacion(
+            @Valid @RequestBody RecuperarPasswordDTO request) {
+        return ResponseEntity.ok(authService.solicitarRecuperacion(request));
+    }
+
+    // F-02: Restablecimiento de contraseña con token
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> restablecerPassword(
+            @Valid @RequestBody ResetPasswordDTO request) {
+        authService.restablecerPassword(request);
         return ResponseEntity.ok().build();
     }
 }

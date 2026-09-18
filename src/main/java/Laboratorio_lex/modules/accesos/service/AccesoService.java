@@ -3,8 +3,15 @@ package Laboratorio_lex.modules.accesos.service;
 import Laboratorio_lex.common.exception.BadRequestException;
 import Laboratorio_lex.modules.accesos.dto.RegistroAccesoRequestDTO;
 import Laboratorio_lex.modules.accesos.dto.ResultadoAccesoResponseDTO;
-import Laboratorio_lex.modules.accesos.model.*;
-import Laboratorio_lex.modules.accesos.repository.*;
+import Laboratorio_lex.modules.accesos.model.AreaRestringida;
+import Laboratorio_lex.modules.accesos.model.HistorialAcceso;
+import Laboratorio_lex.modules.accesos.model.ResultadoAcceso;
+import Laboratorio_lex.modules.accesos.repository.AreaRestringidaRepository;
+import Laboratorio_lex.modules.accesos.repository.AutorizacionZonaRepository;
+import Laboratorio_lex.modules.accesos.repository.HistorialAccesoRepository;
+import Laboratorio_lex.modules.auth.model.EstadoUsuario;
+import Laboratorio_lex.modules.auth.model.Usuario;
+import Laboratorio_lex.modules.auth.repository.UsuarioRepository;
 import Laboratorio_lex.modules.personal.model.Empleado;
 import Laboratorio_lex.modules.personal.model.EstadoEmpleado;
 import Laboratorio_lex.modules.personal.repository.EmpleadoRepository;
@@ -27,6 +34,7 @@ import java.util.stream.Collectors;
 public class AccesoService {
 
     private final EmpleadoRepository empleadoRepository;
+    private final UsuarioRepository usuarioRepository;
     private final AreaRestringidaRepository areaRestringidaRepository;
     private final AutorizacionZonaRepository autorizacionZonaRepository;
     private final HistorialAccesoRepository historialAccesoRepository;
@@ -35,8 +43,11 @@ public class AccesoService {
     public ResultadoAccesoResponseDTO procesarAccesoMolinete(RegistroAccesoRequestDTO dto, String ipOrigen,
             String userAgent) {
 
-        boolean tieneDocumento = dto.getNumeroDocumento() != null && !dto.getNumeroDocumento().isBlank();
-        boolean tieneTarjeta = dto.getCodigoTarjetaRfid() != null && !dto.getCodigoTarjetaRfid().isBlank();
+        String doc = dto.getNumeroDocumento() != null ? dto.getNumeroDocumento().trim() : null;
+        String rfid = dto.getCodigoTarjetaRfid() != null ? dto.getCodigoTarjetaRfid().trim() : null;
+
+        boolean tieneDocumento = doc != null && !doc.isBlank();
+        boolean tieneTarjeta = rfid != null && !rfid.isBlank();
 
         if (!tieneDocumento && !tieneTarjeta) {
             throw new BadRequestException("Debe ingresar el número de documento o el código de la tarjeta RFID");
@@ -45,30 +56,56 @@ public class AccesoService {
         // 1. Validar existencia del área
         Optional<AreaRestringida> areaOpt = areaRestringidaRepository.findById(dto.getAreaId());
         if (areaOpt.isEmpty()) {
-            return registrarYResponder(null, null, ResultadoAcceso.NO_REGISTRADO,
+            return registrarYResponder(null, null, null, ResultadoAcceso.NO_REGISTRADO,
                     "Área restringida no encontrada con ID: " + dto.getAreaId(), dto, ipOrigen, userAgent);
         }
         AreaRestringida area = areaOpt.get();
 
         if (!Boolean.TRUE.equals(area.getActiva())) {
-            return registrarYResponder(null, area, ResultadoAcceso.DENEGADO,
+            return registrarYResponder(null, null, area, ResultadoAcceso.DENEGADO,
                     "El área restringida se encuentra inactiva", dto, ipOrigen, userAgent);
         }
 
         // 2. Validar existencia del empleado por documento o tarjeta (F-20)
         Optional<Empleado> empleadoOpt = tieneDocumento
-                ? empleadoRepository.findByNumeroDocumento(dto.getNumeroDocumento())
-                : empleadoRepository.findByCodigoTarjetaRfid(dto.getCodigoTarjetaRfid());
+                ? empleadoRepository.findByNumeroDocumento(doc)
+                : empleadoRepository.findByCodigoTarjetaRfid(rfid);
 
+        // Si no está registrado como empleado operativo, verificar si es usuario del sistema (Administrador o Supervisor)
         if (empleadoOpt.isEmpty()) {
-            return registrarYResponder(null, area, ResultadoAcceso.NO_REGISTRADO,
+            String identificador = tieneDocumento ? doc : rfid;
+            Optional<Usuario> usuarioOpt = usuarioRepository.findByDocumento(identificador)
+                    .or(() -> usuarioRepository.findByCorreo(identificador));
+
+            if (usuarioOpt.isPresent()) {
+                Usuario usuario = usuarioOpt.get();
+                String rolNombre = usuario.getRol() != null ? usuario.getRol().getNombre() : "";
+
+                if (usuario.getEstado() != EstadoUsuario.ACTIVO) {
+                    return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
+                            "Usuario del sistema bloqueado o inactivo (" + usuario.getEstado() + ")", dto, ipOrigen, userAgent);
+                }
+
+                if ("ADMINISTRADOR".equalsIgnoreCase(rolNombre) || "SUPERVISOR_ACCESOS".equalsIgnoreCase(rolNombre)) {
+                    // Acceso Maestro para Administradores y Supervisores
+                    return registrarYResponder(null, usuario, area, ResultadoAcceso.AUTORIZADO,
+                            "Acceso maestro autorizado (" + rolNombre + ")", dto, ipOrigen, userAgent);
+                } else {
+                    return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
+                            "El rol del usuario (" + rolNombre + ") no tiene permisos de acceso a áreas de laboratorio",
+                            dto, ipOrigen, userAgent);
+                }
+            }
+
+            return registrarYResponder(null, null, area, ResultadoAcceso.NO_REGISTRADO,
                     "Persona no registrada en el sistema", dto, ipOrigen, userAgent);
         }
+
         Empleado empleado = empleadoOpt.get();
 
         // 3. Validar estado del empleado
         if (empleado.getEstado() != EstadoEmpleado.ACTIVO) {
-            return registrarYResponder(empleado, area, ResultadoAcceso.DENEGADO,
+            return registrarYResponder(empleado, null, area, ResultadoAcceso.DENEGADO,
                     "Empleado inactivo/suspendido. Estado actual: " + empleado.getEstado(), dto, ipOrigen, userAgent);
         }
 
@@ -76,12 +113,12 @@ public class AccesoService {
         boolean tienePermiso = autorizacionZonaRepository.existsByEmpleadoIdAndAreaIdAndActivoTrue(empleado.getId(),
                 area.getId());
         if (!tienePermiso) {
-            return registrarYResponder(empleado, area, ResultadoAcceso.DENEGADO,
+            return registrarYResponder(empleado, null, area, ResultadoAcceso.DENEGADO,
                     "El empleado no tiene autorización de acceso para esta área restringida", dto, ipOrigen, userAgent);
         }
 
         // 5. Acceso Autorizado
-        return registrarYResponder(empleado, area, ResultadoAcceso.AUTORIZADO,
+        return registrarYResponder(empleado, null, area, ResultadoAcceso.AUTORIZADO,
                 "Acceso autorizado", dto, ipOrigen, userAgent);
     }
 
@@ -94,7 +131,7 @@ public class AccesoService {
         return historialAccesoRepository.findAll(spec, pageable).map(this::convertirADTO);
     }
 
-    // F-25: listado completo (sin paginar) de los registros que cumplen los filtros, para exportación
+    // F-25: listado completo (sin paginar) de los registros que cumplen los filtros, para exportación o cliente
     @Transactional(readOnly = true)
     public List<ResultadoAccesoResponseDTO> listarParaExportar(String numeroDocumento, Integer areaId,
             OffsetDateTime fechaInicio, OffsetDateTime fechaFin) {
@@ -105,12 +142,25 @@ public class AccesoService {
                 .collect(Collectors.toList());
     }
 
-    private ResultadoAccesoResponseDTO registrarYResponder(Empleado empleado, AreaRestringida area,
-            ResultadoAcceso resultado, String motivo, RegistroAccesoRequestDTO dto, String ipOrigen, String userAgent) {
+    private ResultadoAccesoResponseDTO registrarYResponder(
+            Empleado empleado,
+            Usuario usuario,
+            AreaRestringida area,
+            ResultadoAcceso resultado,
+            String motivo,
+            RegistroAccesoRequestDTO dto,
+            String ipOrigen,
+            String userAgent) {
+
+        String doc = dto.getNumeroDocumento();
+        if (doc == null && usuario != null) {
+            doc = usuario.getDocumento();
+        }
+
         HistorialAcceso historial = HistorialAcceso.builder()
                 .empleado(empleado)
                 .area(area)
-                .numeroDocumentoIngresado(dto.getNumeroDocumento())
+                .numeroDocumentoIngresado(doc)
                 .codigoTarjetaIngresado(dto.getCodigoTarjetaRfid())
                 .resultado(resultado)
                 .motivoDenegacion(resultado != ResultadoAcceso.AUTORIZADO ? motivo : null)
@@ -120,13 +170,32 @@ public class AccesoService {
                 .build();
 
         HistorialAcceso guardado = historialAccesoRepository.save(historial);
-        return convertirADTO(guardado);
+        ResultadoAccesoResponseDTO response = convertirADTO(guardado);
+
+        // Si fue un usuario administrativo, enriquecer el nombre en la respuesta
+        if (usuario != null && empleado == null) {
+            String nombreAdmin = usuario.getNombres() + " " + usuario.getApellidos() + " [" + usuario.getRol().getNombre() + "]";
+            response.setNombreEmpleado(nombreAdmin);
+        }
+
+        if (motivo != null) {
+            response.setMotivo(motivo);
+        }
+
+        return response;
     }
 
     private ResultadoAccesoResponseDTO convertirADTO(HistorialAcceso h) {
-        String nombreEmp = (h.getEmpleado() != null)
-                ? h.getEmpleado().getNombres() + " " + h.getEmpleado().getApellidos()
-                : "DESCONOCIDO";
+        String nombreEmp;
+        if (h.getEmpleado() != null) {
+            nombreEmp = h.getEmpleado().getNombres() + " " + h.getEmpleado().getApellidos();
+        } else if (h.getNumeroDocumentoIngresado() != null && !h.getNumeroDocumentoIngresado().isBlank()) {
+            nombreEmp = usuarioRepository.findByDocumento(h.getNumeroDocumentoIngresado())
+                    .map(u -> u.getNombres() + " " + u.getApellidos() + " [" + u.getRol().getNombre() + "]")
+                    .orElse("DESCONOCIDO");
+        } else {
+            nombreEmp = "DESCONOCIDO";
+        }
 
         String nombreArea = (h.getArea() != null) ? h.getArea().getNombre() : "N/A";
 

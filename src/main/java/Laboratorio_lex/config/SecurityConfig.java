@@ -75,7 +75,7 @@ public class SecurityConfig {
                 // 5. RBAC: permisos diferenciados por rol (F-06)
                 .authorizeHttpRequests(auth -> auth
                         // Endpoints públicos de autenticación, portal público y documentación
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/recuperar-password", "/api/auth/reset-password").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/publico/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()

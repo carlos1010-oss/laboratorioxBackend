@@ -5,11 +5,14 @@ import Laboratorio_lex.common.exception.CredencialesInvalidasException;
 import Laboratorio_lex.common.exception.CuentaBloqueadaException;
 import Laboratorio_lex.common.exception.ResourceNotFoundException;
 import Laboratorio_lex.config.JwtProvider;
-import Laboratorio_lex.modules.auth.dto.LoginRequestDTO;
-import Laboratorio_lex.modules.auth.dto.LoginResponseDTO;
-import Laboratorio_lex.modules.auth.dto.UsuarioResponseDTO;
+import Laboratorio_lex.modules.auditoria.dto.AuditoriaRequestDTO;
+import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
+import Laboratorio_lex.modules.auditoria.service.AuditoriaService;
+import Laboratorio_lex.modules.auth.dto.*;
 import Laboratorio_lex.modules.auth.model.EstadoUsuario;
+import Laboratorio_lex.modules.auth.model.TokenRecuperacion;
 import Laboratorio_lex.modules.auth.model.Usuario;
+import Laboratorio_lex.modules.auth.repository.TokenRecuperacionRepository;
 import Laboratorio_lex.modules.auth.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,14 +20,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
     private final UsuarioRepository usuarioRepository;
+    private final TokenRecuperacionRepository tokenRecuperacionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+    private final AuditoriaService auditoriaService;
 
     @Transactional(noRollbackFor = { CredencialesInvalidasException.class, CuentaBloqueadaException.class })
     public LoginResponseDTO login(LoginRequestDTO request) {
@@ -61,8 +68,13 @@ public class AuthService {
             if (nuevosIntentos >= 3) {
                 usuario.setEstado(EstadoUsuario.BLOQUEADO);
                 usuarioRepository.save(usuario);
+
+                // Auditoría del bloqueo automático por seguridad (NF-10)
+                registrarAuditoriaSeguridad(usuario, TipoOperacion.BLOQUEO,
+                        "Cuenta bloqueada automáticamente tras 3 intentos fallidos consecutivos");
+
                 throw new CuentaBloqueadaException(
-                        "Cuenta bloqueada por seguridad. Contacte al Administrador");
+                        "Cuenta bloqueada por seguridad tras 3 intentos fallidos. Contacte al Administrador");
             }
 
             usuarioRepository.save(usuario);
@@ -89,7 +101,7 @@ public class AuthService {
                 .apellidos(usuario.getApellidos())
                 .correo(usuario.getCorreo())
                 .estado(usuario.getEstado().name())
-                .rol(usuario.getRol().getNombre())
+                .rol(usuario.getRol() != null ? usuario.getRol().getNombre() : "OPERADOR")
                 .build();
 
         return LoginResponseDTO.builder()
@@ -105,5 +117,87 @@ public class AuthService {
         Usuario usuario = usuarioRepository.findByDocumento(documento)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
         usuarioRepository.invalidarTokens(usuario.getId());
+    }
+
+    // F-02: Solicitar recuperación de contraseña (genera token válido por 1 hora en tokens_recuperacion)
+    @Transactional
+    public RecuperacionResponseDTO solicitarRecuperacion(RecuperarPasswordDTO dto) {
+        Optional<Usuario> userOpt = usuarioRepository.findByCorreo(dto.getCorreo().trim());
+
+        // Por seguridad anti-enumeración, se responde con éxito incluso si no existe
+        if (userOpt.isEmpty()) {
+            return RecuperacionResponseDTO.builder()
+                    .mensaje("Si el correo electrónico existe en nuestra base de datos, se ha generado el enlace de recuperación.")
+                    .tokenDemo(null)
+                    .build();
+        }
+
+        Usuario usuario = userOpt.get();
+        String rawToken = UUID.randomUUID().toString();
+
+        TokenRecuperacion tokenRecuperacion = TokenRecuperacion.builder()
+                .usuario(usuario)
+                .tokenHash(rawToken)
+                .expiracion(OffsetDateTime.now().plusHours(1))
+                .usado(false)
+                .createdAt(OffsetDateTime.now())
+                .build();
+
+        tokenRecuperacionRepository.save(tokenRecuperacion);
+
+        registrarAuditoriaSeguridad(usuario, TipoOperacion.MODIFICACION,
+                "Solicitud de token de recuperación de contraseña");
+
+        return RecuperacionResponseDTO.builder()
+                .mensaje("Enlace de recuperación generado satisfactoriamente (válido por 60 minutos).")
+                .tokenDemo(rawToken)
+                .build();
+    }
+
+    // F-02: Restablecer contraseña utilizando el token generado
+    @Transactional
+    public void restablecerPassword(ResetPasswordDTO dto) {
+        TokenRecuperacion token = tokenRecuperacionRepository
+                .findByTokenHashAndUsadoFalseAndExpiracionAfter(dto.getToken().trim(), OffsetDateTime.now())
+                .orElseThrow(() -> new BadRequestException(
+                        "El token de recuperación es inválido, ya fue utilizado o ha expirado"));
+
+        Usuario usuario = token.getUsuario();
+
+        // Actualizar contraseña
+        usuario.setPasswordHash(passwordEncoder.encode(dto.getNuevaPassword()));
+        usuario.setIntentosFallidos((short) 0);
+
+        // Si la cuenta estaba bloqueada, reactivarla
+        if (usuario.getEstado() == EstadoUsuario.BLOQUEADO) {
+            usuario.setEstado(EstadoUsuario.ACTIVO);
+        }
+
+        usuarioRepository.save(usuario);
+        usuarioRepository.invalidarTokens(usuario.getId());
+
+        // Marcar token como usado
+        token.setUsado(true);
+        tokenRecuperacionRepository.save(token);
+
+        registrarAuditoriaSeguridad(usuario, TipoOperacion.DESBLOQUEO,
+                "Restablecimiento exitoso de contraseña mediante token de recuperación");
+    }
+
+    private void registrarAuditoriaSeguridad(Usuario usuario, TipoOperacion operacion, String detalle) {
+        try {
+            AuditoriaRequestDTO auditoriaDTO = AuditoriaRequestDTO.builder()
+                    .usuarioId(usuario != null ? usuario.getId() : null)
+                    .direccionIp("127.0.0.1")
+                    .tipoOperacion(operacion)
+                    .moduloTabla("usuarios")
+                    .valorAnterior(null)
+                    .valorNuevo("{\"detalle\":\"" + detalle + "\",\"usuario\":\"" + (usuario != null ? usuario.getCorreo() : "") + "\"}")
+                    .build();
+
+            auditoriaService.registrarEvento(auditoriaDTO);
+        } catch (Exception e) {
+            System.err.println("Error registrando auditoría de seguridad: " + e.getMessage());
+        }
     }
 }
