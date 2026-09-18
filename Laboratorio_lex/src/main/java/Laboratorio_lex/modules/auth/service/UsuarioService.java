@@ -5,6 +5,7 @@ import Laboratorio_lex.common.exception.ResourceNotFoundException;
 import Laboratorio_lex.modules.auditoria.dto.AuditoriaRequestDTO;
 import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
 import Laboratorio_lex.modules.auditoria.service.AuditoriaService;
+import Laboratorio_lex.modules.auditoria.util.AuditoriaContexto;
 import Laboratorio_lex.modules.auth.dto.UsuarioCreacionDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioModificacionDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioResponseDTO;
@@ -30,6 +31,7 @@ public class UsuarioService {
     private final RolRepository rolRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditoriaService auditoriaService;
+    private final AuditoriaContexto auditoriaContexto;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -144,9 +146,11 @@ public class UsuarioService {
             String jsonAnterior = anterior != null ? objectMapper.writeValueAsString(anterior) : null;
             String jsonNuevo = nuevo != null ? objectMapper.writeValueAsString(nuevo) : null;
 
+            Usuario usuarioActual = auditoriaContexto.obtenerUsuarioActual();
+
             AuditoriaRequestDTO auditoriaDTO = AuditoriaRequestDTO.builder()
-                    .usuarioId(null)
-                    .direccionIp("127.0.0.1")
+                    .usuarioId(usuarioActual != null ? usuarioActual.getId() : null)
+                    .direccionIp(auditoriaContexto.obtenerIpActual())
                     .tipoOperacion(operacion)
                     .moduloTabla("usuarios")
                     .valorAnterior(jsonAnterior)

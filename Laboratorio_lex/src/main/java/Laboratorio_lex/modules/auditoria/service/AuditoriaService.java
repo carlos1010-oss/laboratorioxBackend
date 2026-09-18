@@ -3,15 +3,22 @@ package Laboratorio_lex.modules.auditoria.service;
 import Laboratorio_lex.modules.auditoria.dto.AuditoriaRequestDTO;
 import Laboratorio_lex.modules.auditoria.dto.AuditoriaResponseDTO;
 import Laboratorio_lex.modules.auditoria.model.BitacoraAuditoria;
+import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
+import Laboratorio_lex.modules.auditoria.repository.AuditoriaSpecifications;
 import Laboratorio_lex.modules.auditoria.repository.BitacoraAuditoriaRepository;
 import Laboratorio_lex.modules.auth.model.Usuario;
 import Laboratorio_lex.modules.auth.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 
 @Service
 @RequiredArgsConstructor
@@ -40,10 +47,28 @@ public class AuditoriaService {
     }
 
     @Transactional(readOnly = true)
-    public List<AuditoriaResponseDTO> obtenerTodos() {
-        return bitacoraAuditoriaRepository.findAll().stream()
-                .map(this::convertirADTO)
-                .collect(Collectors.toList());
+    public Page<AuditoriaResponseDTO> obtenerPaginado(
+            Long usuarioId,
+            TipoOperacion tipoOperacion,
+            String moduloTabla,
+            LocalDate fechaInicio,
+            LocalDate fechaFin,
+            int page,
+            int size) {
+
+        OffsetDateTime inicio = fechaInicio != null
+                ? fechaInicio.atStartOfDay(ZoneId.systemDefault()).toOffsetDateTime()
+                : null;
+        OffsetDateTime fin = fechaFin != null
+                ? fechaFin.atTime(23, 59, 59, 999_999_999).atZone(ZoneId.systemDefault()).toOffsetDateTime()
+                : null;
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "timestamp"));
+
+        return bitacoraAuditoriaRepository
+                .findAll(AuditoriaSpecifications.conFiltros(
+                        usuarioId, tipoOperacion, moduloTabla, inicio, fin), pageable)
+                .map(this::convertirADTO);
     }
 
     private AuditoriaResponseDTO convertirADTO(BitacoraAuditoria b) {

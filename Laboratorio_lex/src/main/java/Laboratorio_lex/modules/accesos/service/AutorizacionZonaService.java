@@ -11,6 +11,7 @@ import Laboratorio_lex.modules.accesos.repository.AutorizacionZonaRepository;
 import Laboratorio_lex.modules.auditoria.dto.AuditoriaRequestDTO;
 import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
 import Laboratorio_lex.modules.auditoria.service.AuditoriaService;
+import Laboratorio_lex.modules.auditoria.util.AuditoriaContexto;
 import Laboratorio_lex.modules.auth.model.Usuario;
 import Laboratorio_lex.modules.auth.repository.UsuarioRepository;
 import Laboratorio_lex.modules.personal.model.Empleado;
@@ -33,6 +34,7 @@ public class AutorizacionZonaService {
     private final AreaRestringidaRepository areaRestringidaRepository;
     private final UsuarioRepository usuarioRepository;
     private final AuditoriaService auditoriaService;
+    private final AuditoriaContexto auditoriaContexto;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -113,9 +115,11 @@ public class AutorizacionZonaService {
             String jsonAnterior = anterior != null ? objectMapper.writeValueAsString(anterior) : null;
             String jsonNuevo = nuevo != null ? objectMapper.writeValueAsString(nuevo) : null;
 
+            Usuario usuarioActual = auditoriaContexto.obtenerUsuarioActual();
+
             AuditoriaRequestDTO auditoriaDTO = AuditoriaRequestDTO.builder()
-                    .usuarioId(null)
-                    .direccionIp("127.0.0.1")
+                    .usuarioId(usuarioActual != null ? usuarioActual.getId() : null)
+                    .direccionIp(auditoriaContexto.obtenerIpActual())
                     .tipoOperacion(operacion)
                     .moduloTabla("autorizaciones_zona")
                     .valorAnterior(jsonAnterior)

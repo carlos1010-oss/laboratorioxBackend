@@ -1,7 +1,7 @@
 # Zone Control — Progreso del Backend
 
 > Documento de continuidad para retomar el trabajo en otra sesión sin contexto previo.
-> Última actualización: Fase 5 completada (F-22..F-30: historial filtrado, exportación CSV/HTML, consolidado por departamento y sincronización con el socio internacional), verificada end-to-end.
+> Última actualización: Fase 6 completada (F-31..F-33: auditoría con usuario/IP reales y filtros) + migración V4.
 
 ## Ubicación y stack
 
@@ -33,7 +33,7 @@ Cambios hechos:
 - `HistorialAcceso`: campos `ipOrigen` (InetAddress) y `userAgent`; ID `GenerationType.UUID`.
 - `AccesoService`/`AccesoController`/DTOs: simulación por **documento o RFID**, captura IP y User-Agent.
 - `HistorialAccesoRepository`: `JpaRepository<HistorialAcceso, UUID>` + `findByTimestampBetween`.
-- `BitacoraAuditoria.direccionIp`: `String` (la BD real es `VARCHAR`, aunque `V1` declara `INET`).
+- `BitacoraAuditoria.direccionIp`: `String` (en Fase 6 la columna quedó alineada vía V4; antes el `ALTER` era solo manual en la BD).
 - ENUM nativos PG mapeados con `@JdbcTypeCode(SqlTypes.NAMED_ENUM)` + `columnDefinition`:
   `estado_usuario`, `estado_empleado`, `resultado_acceso_enum`, `tipo_operacion_enum`, `estado_sincronizacion_enum`.
 - `@EnableScheduling` en `LaboratorioLexApplication`.
@@ -42,7 +42,7 @@ Cambios hechos:
   - Tabla `configuracion_exportacion` (HU-015) + trigger `updated_at` + fila semilla.
 
 IMPORTANTE — desfase V1 vs BD real:
-- `bitacora_auditoria.direccion_ip` es `VARCHAR` en la BD (V1 dice `INET`).
+- `bitacora_auditoria.direccion_ip` fue `VARCHAR` en la BD (V1 dice `INET`); **RESUELTO en Fase 6** con la migración `V4__bitacora_direccion_ip_varchar.sql` (versionada e idempotente).
 - El usuario admin ya tenía un hash BCrypt real (NO el placeholder de V1). El `UPDATE` de V2 es condicional y no lo cambió. La contraseña del admin es la que ya conocías.
 
 ## Estado: Fase 2 — COMPLETADA (login por documento + RBAC), verificada contra la app en vivo
@@ -171,13 +171,43 @@ Evidencia de la verificación (app en vivo):
 > El contrato del socio (URL real, SMTP) no está entregado: todo es **configurable y simulado** por defecto (`simular=true`).
 > En JPQL no se usan literales de enum (Hibernate generaba `::ResultadoAcceso` inexistente en PG); los valores van por parámetro.
 
+## Estado: Fase 6 — COMPLETADA (Auditoría con usuario/IP reales y filtros — F-31..F-33) + migración V4
+
+Trazabilidad real: cada operación crítica registra el **usuario autenticado** (vía JWT) y la **IP real del cliente**
+(soporta `X-Forwarded-For` de proxies/carga); consulta de la bitácora paginada y filtrable.
+
+Cambios hechos:
+- **Nuevo** `modules/auditoria/util/AuditoriaContexto`: `obtenerUsuarioActual()` (toma el `Usuario` del `SecurityContextHolder`)
+  y `obtenerIpActual()` (lee el primer elemento de `X-Forwarded-For` o `getRemoteAddr()`; fallback `127.0.0.1` en jobs/pruebas).
+- `EmpleadoService`, `UsuarioService` y `AutorizacionZonaService`: `registrarAuditoria(...)` ahora usa `AuditoriaContexto`
+  en vez del hardcode `usuarioId=null` / `"127.0.0.1"` (F-31/F-32).
+- `BitacoraAuditoriaRepository` extiende `JpaSpecificationExecutor` + **Nuevo** `AuditoriaSpecifications`
+  (filtros opcionales: `usuarioId`, `tipoOperacion`, `moduloTabla` LIKE, `fechaInicio`/`fechaFin`).
+- `AuditoriaService.obtenerPaginado(...)`: `Page<AuditoriaResponseDTO>` ordenado por `timestamp` DESC
+  (antes `obtenerTodos()` devolvía lista completa sin filtros).
+- `AuditoriaController`: `GET /api/auditoria` ahora recibe `usuarioId`, `tipoOperacion`, `moduloTabla`,
+  `fechaInicio`/`fechaFin` (**`yyyy-MM-dd`, día completo** — `LocalDate`), `page` (0) y `size` (20).
+- Migración **`V4__bitacora_direccion_ip_varchar.sql`**: `bitacora_auditoria.direccion_ip` pasa de `INET` a `VARCHAR(45)`
+  (idempotente; versiona el `ALTER` manual que había en la BD local). Aplicada y verificada en `flyway_schema_history`.
+
+Evidencia de la verificación (instancia 8081, datos de prueba luego eliminados):
+1. Alta y edición de empleado con header `X-Forwarded-For: <IP, ...>` → bitácora con `usuario=Admin Principal (id=1)`
+   e `ip=<primer valor del header>` (F-31/F-32). ✔
+2. `GET /api/auditoria?tipoOperacion=CREACION&moduloTabla=empleados` → 1 registro correcto. ✔
+3. `GET /api/auditoria?fechaInicio=2026-09-17&fechaFin=2026-09-17` → día completo (2 registros). ✔
+4. `GET /api/auditoria?page=0&size=1&usuarioId=1&moduloTabla=empleados&tipoOperacion=CREACION` → total=1, content de 1. ✔
+5. Ventana sin datos (`2025-01-01..2025-01-31`) → total=0. ✔
+6. `flyway_schema_history`: `4 | bitacora direccion ip varchar | true`. `information_schema` confirma `character varying(45)`. ✔
+
+> Nota: al terminar se truncaron los datos de prueba (empleados, bitácora, autorizaciones, historial) para dejar la BD
+> como estaba. La contraseña del admin sigue siendo la temporal `Admin123` mientras el usuario pruebe el sistema.
+
 ## Backlog pendiente (por RF/HU)
 
 Prioridad Alta:
 - (ninguno de F-20..F-30 queda pendiente; la parte aplazada de F-25 es el formato PDF, ver decisión arriba)
 
 Prioridad Media/Baja:
-- F-31..F-33: auditoría con usuario/IP reales y filtros (hoy `EmpleadoService` registra IP `127.0.0.1` y usuario `null`).
 - F-34: búsqueda por documento/nombres/apellidos + paginación (hoy `GET /api/personal/empleados` devuelve todo).
 - F-35: portal público.
 

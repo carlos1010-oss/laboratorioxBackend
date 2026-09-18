@@ -5,6 +5,8 @@ import Laboratorio_lex.common.exception.ResourceNotFoundException;
 import Laboratorio_lex.modules.auditoria.dto.AuditoriaRequestDTO;
 import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
 import Laboratorio_lex.modules.auditoria.service.AuditoriaService;
+import Laboratorio_lex.modules.auditoria.util.AuditoriaContexto;
+import Laboratorio_lex.modules.auth.model.Usuario;
 import Laboratorio_lex.modules.personal.dto.EmpleadoRequestDTO;
 import Laboratorio_lex.modules.personal.dto.EmpleadoResponseDTO;
 import Laboratorio_lex.modules.personal.dto.EmpleadoUpdateDTO;
@@ -28,6 +30,7 @@ public class EmpleadoService {
         private final EmpleadoRepository empleadoRepository;
         private final DepartamentoRepository departamentoRepository;
         private final AuditoriaService auditoriaService;
+        private final AuditoriaContexto auditoriaContexto;
         private final ObjectMapper objectMapper;
 
         @Transactional(readOnly = true)
@@ -213,10 +216,11 @@ public class EmpleadoService {
                         String jsonAnterior = anterior != null ? objectMapper.writeValueAsString(anterior) : null;
                         String jsonNuevo = nuevo != null ? objectMapper.writeValueAsString(nuevo) : null;
 
+                        Usuario usuarioActual = auditoriaContexto.obtenerUsuarioActual();
+
                         AuditoriaRequestDTO auditoriaDTO = AuditoriaRequestDTO.builder()
-                                        .usuarioId(null) // Se asociará con el usuario autenticado vía JWT en fases
-                                                         // avanzadas
-                                        .direccionIp("127.0.0.1")
+                                        .usuarioId(usuarioActual != null ? usuarioActual.getId() : null)
+                                        .direccionIp(auditoriaContexto.obtenerIpActual())
                                         .tipoOperacion(operacion)
                                         .moduloTabla("empleados")
                                         .valorAnterior(jsonAnterior)
