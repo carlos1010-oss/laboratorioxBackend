@@ -15,13 +15,13 @@ import Laboratorio_lex.modules.personal.model.Empleado;
 import Laboratorio_lex.modules.personal.model.EstadoEmpleado;
 import Laboratorio_lex.modules.personal.repository.DepartamentoRepository;
 import Laboratorio_lex.modules.personal.repository.EmpleadoRepository;
+import Laboratorio_lex.modules.personal.repository.EmpleadoSpecifications;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -33,11 +33,21 @@ public class EmpleadoService {
         private final AuditoriaContexto auditoriaContexto;
         private final ObjectMapper objectMapper;
 
+        // F-34: búsqueda paginada y filtrable por documento, nombres, apellidos,
+        // departamento y estado
         @Transactional(readOnly = true)
-        public List<EmpleadoResponseDTO> obtenerTodos() {
-                return empleadoRepository.findAll().stream()
-                                .map(this::convertirADTO)
-                                .collect(Collectors.toList());
+        public Page<EmpleadoResponseDTO> buscar(
+                        String documento,
+                        String nombres,
+                        String apellidos,
+                        Integer departamentoId,
+                        EstadoEmpleado estado,
+                        Pageable pageable) {
+
+                return empleadoRepository
+                                .findAll(EmpleadoSpecifications.conFiltros(
+                                                documento, nombres, apellidos, departamentoId, estado), pageable)
+                                .map(this::convertirADTO);
         }
 
         @Transactional(readOnly = true)

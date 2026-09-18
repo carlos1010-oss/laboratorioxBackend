@@ -1,7 +1,7 @@
 # Zone Control — Progreso del Backend
 
 > Documento de continuidad para retomar el trabajo en otra sesión sin contexto previo.
-> Última actualización: Fase 6 completada (F-31..F-33: auditoría con usuario/IP reales y filtros) + migración V4.
+> Última actualización: Fase 7 completada (F-34: búsqueda/paginación en personal; F-35: portal público). RF funcionales (F-01..F-35) del backlog cubiertos salvo F-25-PDF (aplazado).
 
 ## Ubicación y stack
 
@@ -202,14 +202,44 @@ Evidencia de la verificación (instancia 8081, datos de prueba luego eliminados)
 > Nota: al terminar se truncaron los datos de prueba (empleados, bitácora, autorizaciones, historial) para dejar la BD
 > como estaba. La contraseña del admin sigue siendo la temporal `Admin123` mientras el usuario pruebe el sistema.
 
+## Estado: Fase 7 — COMPLETADA (Búsqueda en personal y portal público — F-34, F-35)
+
+F-34: `GET /api/personal/empleados` ahora es paginado y filtrable. F-35: API público (sin token) para el portal público.
+
+Cambios hechos:
+- **Nuevo** `EmpleadoSpecifications` (filtros opcionales: `documento`, `nombres`, `apellidos` — LIKE case-insensitive —,
+  `departamentoId` exacto y `estado`). `EmpleadoRepository` extiende `JpaSpecificationExecutor`.
+- `EmpleadoService.buscar(...)` devuelve `Page<EmpleadoResponseDTO>` (orden por defecto `apellidos ASC`);
+  `obtenerTodos()` eliminado. `EmpleadoController.GET` recibe los filtros + `@PageableDefault`.
+- **Nuevo módulo `modules/portal`** (F-35), rutas públicas en `SecurityConfig` (`.requestMatchers("/api/publico/**").permitAll()`):
+  - `POST /api/publico/accesos/molinete`: simula acceso igual que el interno (registra historial con IP/user-agent)
+    pero **no expone datos personales** — `ResultadoAccesoPublicoDTO` (resultado, color, motivo, área, fecha).
+  - `GET /api/publico/verificacion?documento=|tarjeta=`: `VerificacionIngresoDTO {registrado, estado, autorizadoIngreso}`
+    (confirma existencia/estado sin datos personales). Sin documento ni tarjeta → 400.
+- `AccesoService.procesarAccesoMolinete` y el historial quedan **reutilizados** por el portal público.
+
+Evidencia de la verificación (instancia 8081, datos de prueba luego eliminados):
+1. F-34: sin filtros → total=3; `nombres=juan` → 2; `departamentoId=1` → 2; `estado=INACTIVO` → 1;
+   `apellidos=perez` → 1; `page=0&size=1&sort=numeroDocumento,desc` → total=3 con 1 elemento; combo completo → 1. ✔
+2. F-35 `POST /api/publico/accesos/molinete` (doc aut.: área) → `AUTORIZADO/VERDE` y la respuesta JSON **no incluye**
+   `nombreEmpleado` (sin fuga de datos). ✔
+3. F-35 no registrado → `NO_REGISTRADO/AMARILLO`. ✔
+4. F-35 `verificacion`: doc activo → `{registrado:true, estado:ACTIVO, autorizado:true}`; tarjeta de empleado INACTIVO →
+   `{autorizado:false, estado:INACTIVO}`; tarjeta inexistente → `{registrado:false}`; sin parámetros → 400. ✔
+5. `/api/personal/empleados` y `/api/auditoria` **sin token** → 401 (el resto del sistema sigue protegido). ✔
+
+> Decisiones/riesgos F-35: el portal es público por diseño (kiosco), así que la verificación de registro permite
+> enumerar documentos/tarjetas existentes (no devuelve datos personales). Si se despliega a producción real se
+> recomienda rate-limiting/preguntas adicionales. La simulación pública sí deja trazabilidad en `historial_accesos`.
+
 ## Backlog pendiente (por RF/HU)
 
 Prioridad Alta:
-- (ninguno de F-20..F-30 queda pendiente; la parte aplazada de F-25 es el formato PDF, ver decisión arriba)
+- (ninguno de F-01..F-35 queda pendiente; la única pieza aplazada es el formato PDF de F-25 — ver decisión arriba)
 
 Prioridad Media/Baja:
-- F-34: búsqueda por documento/nombres/apellidos + paginación (hoy `GET /api/personal/empleados` devuelve todo).
-- F-35: portal público.
+- (ninguno; los RF funcionales están cubiertos. Pendientes no funcionales: credenciales a variables de entorno,
+  pruebas automatizadas, y los insumos externos: URL real del socio + SMTP para salir del modo simulación)
 
 ## Bugs conocidos / decisiones pendientes
 

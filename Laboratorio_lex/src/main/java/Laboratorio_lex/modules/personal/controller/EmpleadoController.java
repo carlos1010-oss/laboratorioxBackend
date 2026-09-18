@@ -10,6 +10,10 @@ import Laboratorio_lex.modules.personal.service.EmpleadoCsvService;
 import Laboratorio_lex.modules.personal.service.EmpleadoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,7 +22,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/personal/empleados")
@@ -26,11 +29,20 @@ import java.util.List;
 public class EmpleadoController {
 
     private final EmpleadoService empleadoService;
-    private final EmpleadoCsvService empleadoCsvService; // <--- Inyección del nuevo servicio
+    private final EmpleadoCsvService empleadoCsvService;
 
+    // F-34: listado paginado y filtrable por documento, nombres, apellidos,
+    // departamento y estado
     @GetMapping
-    public ResponseEntity<List<EmpleadoResponseDTO>> listarTodos() {
-        return ResponseEntity.ok(empleadoService.obtenerTodos());
+    public ResponseEntity<Page<EmpleadoResponseDTO>> listar(
+            @RequestParam(required = false) String documento,
+            @RequestParam(required = false) String nombres,
+            @RequestParam(required = false) String apellidos,
+            @RequestParam(required = false) Integer departamentoId,
+            @RequestParam(required = false) EstadoEmpleado estado,
+            @PageableDefault(size = 50, sort = "apellidos", direction = Sort.Direction.ASC) Pageable pageable) {
+        return ResponseEntity.ok(
+                empleadoService.buscar(documento, nombres, apellidos, departamentoId, estado, pageable));
     }
 
     @GetMapping("/{id}")

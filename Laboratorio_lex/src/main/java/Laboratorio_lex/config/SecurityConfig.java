@@ -63,6 +63,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
 
+                        // F-35: portal público (sin token) — simulación de acceso y
+                        // verificación de registro, sin datos personales.
+                        .requestMatchers("/api/publico/**").permitAll()
+
                         // Gestión de usuarios internos: solo Administrador (F-07, F-09, F-10)
                         .requestMatchers("/api/auth/usuarios/**").hasRole("ADMINISTRADOR")
 

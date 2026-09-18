@@ -2,13 +2,15 @@ package Laboratorio_lex.modules.personal.repository;
 
 import Laboratorio_lex.modules.personal.model.Empleado;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface EmpleadoRepository extends JpaRepository<Empleado, Long> {
+public interface EmpleadoRepository
+        extends JpaRepository<Empleado, Long>, JpaSpecificationExecutor<Empleado> {
 
     // Busca un empleado por su número de documento (Inmutable - F-16)
     Optional<Empleado> findByNumeroDocumento(String numeroDocumento);
