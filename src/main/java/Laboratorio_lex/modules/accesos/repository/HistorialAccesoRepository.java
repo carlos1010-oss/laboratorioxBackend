@@ -16,6 +16,18 @@ import java.util.UUID;
 public interface HistorialAccesoRepository extends JpaRepository<HistorialAcceso, UUID>,
         JpaSpecificationExecutor<HistorialAcceso> {
 
+    // Búsqueda personalizada por documento ingresado
+    List<HistorialAcceso> findByNumeroDocumentoIngresado(String numeroDocumentoIngresado);
+
+    // Búsqueda personalizada por código de tarjeta ingresado
+    List<HistorialAcceso> findByCodigoTarjetaIngresado(String codigoTarjetaIngresado);
+
+    // Búsqueda personalizada por empleado
+    List<HistorialAcceso> findByEmpleadoId(Long empleadoId);
+
+    // Búsqueda personalizada por área
+    List<HistorialAcceso> findByAreaId(Integer areaId);
+
     // Consulta de accesos por rango de fechas (útil para auditoría e integración internacional)
     List<HistorialAcceso> findByTimestampBetween(OffsetDateTime inicio, OffsetDateTime fin);
 

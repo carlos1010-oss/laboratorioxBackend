@@ -1,5 +1,6 @@
 package Laboratorio_lex.modules.auth.service;
 
+import Laboratorio_lex.common.exception.BadRequestException;
 import Laboratorio_lex.common.exception.CredencialesInvalidasException;
 import Laboratorio_lex.common.exception.CuentaBloqueadaException;
 import Laboratorio_lex.common.exception.ResourceNotFoundException;
@@ -27,8 +28,17 @@ public class AuthService {
 
     @Transactional(noRollbackFor = { CredencialesInvalidasException.class, CuentaBloqueadaException.class })
     public LoginResponseDTO login(LoginRequestDTO request) {
-        // 1. Buscar usuario por número de documento (F-01, HU-001)
-        Usuario usuario = usuarioRepository.findByDocumento(request.getDocumento())
+        String identificador = request.getDocumento() != null && !request.getDocumento().isBlank()
+                ? request.getDocumento().trim()
+                : (request.getCorreo() != null ? request.getCorreo().trim() : null);
+
+        if (identificador == null || identificador.isBlank()) {
+            throw new BadRequestException("Debe ingresar un número de documento o correo electrónico");
+        }
+
+        // 1. Buscar usuario por número de documento o por correo (F-01, HU-001)
+        Usuario usuario = usuarioRepository.findByDocumento(identificador)
+                .or(() -> usuarioRepository.findByCorreo(identificador))
                 .orElseThrow(() -> new CredencialesInvalidasException(
                         "Número de documento o contraseña incorrectos"));
 

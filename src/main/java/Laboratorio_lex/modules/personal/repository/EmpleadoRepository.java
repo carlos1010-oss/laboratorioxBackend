@@ -1,6 +1,7 @@
 package Laboratorio_lex.modules.personal.repository;
 
 import Laboratorio_lex.modules.personal.model.Empleado;
+import Laboratorio_lex.modules.personal.model.EstadoEmpleado;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
@@ -15,8 +16,7 @@ public interface EmpleadoRepository
     // Busca un empleado por su número de documento (Inmutable - F-16)
     Optional<Empleado> findByNumeroDocumento(String numeroDocumento);
 
-    // Busca un empleado por el código de su tarjeta RFID (Simulador de accesos -
-    // F-19)
+    // Busca un empleado por el código de su tarjeta RFID (Simulador de accesos - F-19)
     Optional<Empleado> findByCodigoTarjetaRfid(String codigoTarjetaRfid);
 
     // Validaciones de existencia antes de registrar o procesar CSV
@@ -26,4 +26,7 @@ public interface EmpleadoRepository
 
     // Búsqueda para filtros en pantalla por departamento (F-34)
     List<Empleado> findByDepartamentoId(Integer departamentoId);
+
+    // Búsqueda por estado
+    List<Empleado> findByEstado(EstadoEmpleado estado);
 }

@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/catalogos/areas-restringidas")
+@RequestMapping({"/api/catalogos/areas-restringidas", "/api/catalogos/areas"})
 @RequiredArgsConstructor
 public class AreaRestringidaController {
 

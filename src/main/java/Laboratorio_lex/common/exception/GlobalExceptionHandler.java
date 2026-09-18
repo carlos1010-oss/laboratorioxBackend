@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
@@ -61,6 +62,22 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.NOT_FOUND.value())
                 .error(HttpStatus.NOT_FOUND.getReasonPhrase())
                 .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        return new ResponseEntity<>(errorDTO, HttpStatus.NOT_FOUND);
+    }
+
+    // Captura rutas estáticas o endpoints no encontrados (HTTP 404)
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponseDTO> handleNoResourceFoundException(
+            NoResourceFoundException ex, HttpServletRequest request) {
+
+        ErrorResponseDTO errorDTO = ErrorResponseDTO.builder()
+                .status(HttpStatus.NOT_FOUND.value())
+                .error(HttpStatus.NOT_FOUND.getReasonPhrase())
+                .message("El recurso solicitado no fue encontrado en el servidor.")
                 .path(request.getRequestURI())
                 .timestamp(OffsetDateTime.now())
                 .build();
