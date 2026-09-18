@@ -2,6 +2,8 @@ package Laboratorio_lex.modules.auth.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 
@@ -34,7 +36,8 @@ public class Usuario {
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "estado_usuario")
     private EstadoUsuario estado;
 
     @Column(name = "intentos_fallidos", nullable = false)
@@ -50,12 +53,23 @@ public class Usuario {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    // Última actividad registrada; la sesión expira por inactividad (F-03)
+    @Column(name = "ultima_actividad")
+    private OffsetDateTime ultimaActividad;
+
+    // Versión del token vigente; se incrementa al cerrar sesión (F-04)
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = OffsetDateTime.now();
         this.updatedAt = OffsetDateTime.now();
         if (this.intentosFallidos == null) {
             this.intentosFallidos = (short) 0;
+        }
+        if (this.tokenVersion == null) {
+            this.tokenVersion = 0;
         }
     }
 

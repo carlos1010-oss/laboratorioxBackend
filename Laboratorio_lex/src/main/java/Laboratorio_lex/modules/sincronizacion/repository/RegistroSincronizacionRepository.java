@@ -13,6 +13,8 @@ public interface RegistroSincronizacionRepository extends JpaRepository<Registro
 
     List<RegistroSincronizacionSocio> findByEstado(EstadoSincronizacion estado);
 
+    long countByEstado(EstadoSincronizacion estado);
+
     List<RegistroSincronizacionSocio> findByEstadoAndFechaProximoReintentoBefore(
             EstadoSincronizacion estado, OffsetDateTime fecha);
 }

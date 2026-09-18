@@ -3,6 +3,8 @@ package Laboratorio_lex.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -39,14 +41,56 @@ public class SecurityConfig {
                 // 3. Política de sesión Stateless (JWT)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                // 4. Configurar permisos de rutas
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // Login y registro públicos
-                        .requestMatchers("/h2-console/**").permitAll() // Consola H2 pública en desarrollo
-                        .anyRequest().authenticated() // Cualquier otra ruta requiere Token Bearer
-                )
+                // 4. Respuestas JSON ante fallos de autenticación/autorización (NF-15)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            response.setContentType("application/json");
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write(
+                                    "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Debe iniciar sesión para acceder a este recurso.\"}");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpStatus.FORBIDDEN.value());
+                            response.setContentType("application/json");
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write(
+                                    "{\"status\":403,\"error\":\"Forbidden\",\"message\":\"No tiene permisos para realizar esta acción.\"}");
+                        }))
 
-                // 5. Registrar filtro JWT antes del filtro por defecto de Spring
+                // 5. RBAC: permisos diferenciados por rol (F-06)
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers("/h2-console/**").permitAll()
+
+                        // Gestión de usuarios internos: solo Administrador (F-07, F-09, F-10)
+                        .requestMatchers("/api/auth/usuarios/**").hasRole("ADMINISTRADOR")
+
+                        // Auditoría: Administrador y Supervisor (F-33)
+                        .requestMatchers("/api/auditoria/**").hasAnyRole("ADMINISTRADOR", "SUPERVISOR_ACCESOS")
+
+                        // Sincronización con el socio: Administrador y Supervisor (F-30)
+                        .requestMatchers("/api/sincronizacion/**").hasAnyRole("ADMINISTRADOR", "SUPERVISOR_ACCESOS")
+
+                        // Autorizaciones de zona: Administrador y Gestor de Personal (F-19, F-21)
+                        .requestMatchers("/api/accesos/autorizaciones/**").hasAnyRole("ADMINISTRADOR", "GESTOR_PERSONAL")
+
+                        // Gestión de personal y catálogos (F-11 a F-19)
+                        .requestMatchers("/api/personal/**").hasAnyRole("ADMINISTRADOR", "GESTOR_PERSONAL")
+
+                        // Catálogos: lectura para gestión/supervisión, escritura solo Administrador (F-18)
+                        .requestMatchers(HttpMethod.GET, "/api/catalogos/**").hasAnyRole("ADMINISTRADOR",
+                                "GESTOR_PERSONAL", "SUPERVISOR_ACCESOS")
+                        .requestMatchers("/api/catalogos/**").hasRole("ADMINISTRADOR")
+
+                        // Simulación e historial de accesos (F-20 a F-25)
+                        .requestMatchers("/api/accesos/**").hasAnyRole("ADMINISTRADOR", "GESTOR_PERSONAL",
+                                "SUPERVISOR_ACCESOS")
+
+                        // Cualquier otra ruta requiere Token Bearer válido
+                        .anyRequest().authenticated())
+
+                // 6. Registrar filtro JWT antes del filtro por defecto de Spring
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

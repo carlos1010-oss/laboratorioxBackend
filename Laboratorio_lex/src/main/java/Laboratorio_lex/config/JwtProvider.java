@@ -26,37 +26,43 @@ public class JwtProvider {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    // 1. Generar token JWT a partir del correo del usuario
-    public String generateToken(String correo) {
+    // 1. Generar token JWT a partir del documento del usuario (subject) y la versión vigente
+    public String generateToken(String documento, int tokenVersion) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpirationInMs);
 
         return Jwts.builder()
-                .setSubject(correo)
+                .setSubject(documento)
+                .claim("ver", tokenVersion)
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    // 2. Extraer el correo del token
-    public String getCorreoFromToken(String token) {
-        Claims claims = Jwts.parserBuilder()
+    // 2. Extraer el subject (documento) del token
+    public String getSubjectFromToken(String token) {
+        return getClaims(token).getSubject();
+    }
+
+    // 3. Extraer la versión del token (para invalidación en logout — F-04)
+    public int getTokenVersionFromToken(String token) {
+        Object version = getClaims(token).get("ver");
+        return version instanceof Number ? ((Number) version).intValue() : 0;
+    }
+
+    private Claims getClaims(String token) {
+        return Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
-
-        return claims.getSubject();
     }
 
-    // 3. Validar el token JWT
+    // 4. Validar el token JWT
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder()
-                    .setSigningKey(getSigningKey())
-                    .build()
-                    .parseClaimsJws(token);
+            getClaims(token);
             return true;
         } catch (JwtException | IllegalArgumentException e) {
             return false;

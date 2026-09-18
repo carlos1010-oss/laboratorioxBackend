@@ -3,6 +3,7 @@ package Laboratorio_lex.modules.auth.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
@@ -29,6 +30,7 @@ public class UsuarioCreacionDTO {
 
     @NotBlank(message = "La contraseña es obligatoria")
     @Size(min = 8, message = "La contraseña debe tener al menos 8 caracteres")
+    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).+$", message = "La contraseña debe incluir al menos una mayúscula, una minúscula y un número")
     private String password;
 
     @NotNull(message = "El ID del rol es obligatorio")

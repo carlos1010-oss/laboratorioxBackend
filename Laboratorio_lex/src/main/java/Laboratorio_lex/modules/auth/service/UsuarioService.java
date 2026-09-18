@@ -88,6 +88,12 @@ public class UsuarioService {
         Rol rol = rolRepository.findById(dto.getRolId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rol no encontrado con ID: " + dto.getRolId()));
 
+        // F-10: no degradar al único Administrador activo
+        if (esUltimoAdministradorActivo(usuario) && !"ADMINISTRADOR".equals(rol.getNombre())) {
+            throw new BadRequestException(
+                    "No es posible modificar el rol del único Administrador activo en el sistema");
+        }
+
         usuario.setNombres(dto.getNombres());
         usuario.setApellidos(dto.getApellidos());
         usuario.setCorreo(dto.getCorreo());
@@ -107,6 +113,12 @@ public class UsuarioService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
 
         UsuarioResponseDTO estadoAnterior = convertirADTO(usuario);
+
+        // F-10: no bloquear/desactivar al único Administrador activo
+        if (nuevoEstado != EstadoUsuario.ACTIVO && esUltimoAdministradorActivo(usuario)) {
+            throw new BadRequestException(
+                    "No es posible cambiar el estado del único Administrador activo en el sistema");
+        }
 
         usuario.setEstado(nuevoEstado);
 
@@ -145,6 +157,16 @@ public class UsuarioService {
         } catch (Exception e) {
             System.err.println("Error al registrar evento de auditoría en usuarios: " + e.getMessage());
         }
+    }
+
+    private boolean esUltimoAdministradorActivo(Usuario usuario) {
+        if (usuario.getRol() == null || !"ADMINISTRADOR".equals(usuario.getRol().getNombre())) {
+            return false;
+        }
+        if (usuario.getEstado() != EstadoUsuario.ACTIVO) {
+            return false;
+        }
+        return usuarioRepository.countByRol_NombreAndEstado("ADMINISTRADOR", EstadoUsuario.ACTIVO) <= 1;
     }
 
     private UsuarioResponseDTO convertirADTO(Usuario u) {

@@ -36,7 +36,8 @@ public class RegistroSincronizacionSocio {
     private String payloadJson;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "estado_sincronizacion_enum")
     private EstadoSincronizacion estado;
 
     @Column(name = "intentos_realizados", nullable = false)

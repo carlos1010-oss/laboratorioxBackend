@@ -1,5 +1,8 @@
 package Laboratorio_lex.modules.auth.service;
 
+import Laboratorio_lex.common.exception.CredencialesInvalidasException;
+import Laboratorio_lex.common.exception.CuentaBloqueadaException;
+import Laboratorio_lex.common.exception.ResourceNotFoundException;
 import Laboratorio_lex.config.JwtProvider;
 import Laboratorio_lex.modules.auth.dto.LoginRequestDTO;
 import Laboratorio_lex.modules.auth.dto.LoginResponseDTO;
@@ -12,6 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -20,18 +25,21 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
 
-    @Transactional
+    @Transactional(noRollbackFor = { CredencialesInvalidasException.class, CuentaBloqueadaException.class })
     public LoginResponseDTO login(LoginRequestDTO request) {
-        // 1. Buscar usuario por correo
-        Usuario usuario = usuarioRepository.findByCorreo(request.getCorreo())
-                .orElseThrow(() -> new RuntimeException("Credenciales inválidas"));
+        // 1. Buscar usuario por número de documento (F-01, HU-001)
+        Usuario usuario = usuarioRepository.findByDocumento(request.getDocumento())
+                .orElseThrow(() -> new CredencialesInvalidasException(
+                        "Número de documento o contraseña incorrectos"));
 
         // 2. Verificar si la cuenta está bloqueada o inactiva (F-08)
         if (usuario.getEstado() == EstadoUsuario.BLOQUEADO) {
-            throw new RuntimeException("La cuenta se encuentra BLOQUEADA por superar el límite de intentos fallidos");
+            throw new CuentaBloqueadaException(
+                    "Cuenta bloqueada por seguridad. Contacte al Administrador");
         }
         if (usuario.getEstado() == EstadoUsuario.INACTIVO) {
-            throw new RuntimeException("La cuenta se encuentra INACTIVA. Contacte al administrador");
+            throw new CuentaBloqueadaException(
+                    "La cuenta se encuentra INACTIVA. Contacte al Administrador");
         }
 
         // 3. Validar contraseña
@@ -43,11 +51,13 @@ public class AuthService {
             if (nuevosIntentos >= 3) {
                 usuario.setEstado(EstadoUsuario.BLOQUEADO);
                 usuarioRepository.save(usuario);
-                throw new RuntimeException("Cuenta BLOQUEADA tras 3 intentos fallidos consecutivos");
+                throw new CuentaBloqueadaException(
+                        "Cuenta bloqueada por seguridad. Contacte al Administrador");
             }
 
             usuarioRepository.save(usuario);
-            throw new RuntimeException("Credenciales inválidas. Intentos fallidos: " + nuevosIntentos + "/3");
+            throw new CredencialesInvalidasException(
+                    "Número de documento o contraseña incorrectos. Intentos fallidos: " + nuevosIntentos + "/3");
         }
 
         // 4. Reiniciar contador de intentos fallidos
@@ -56,8 +66,10 @@ public class AuthService {
             usuarioRepository.save(usuario);
         }
 
-        // 5. Generar token JWT
-        String tokenReal = jwtProvider.generateToken(usuario.getCorreo());
+        // 5. Reiniciar la cuenta de inactividad (F-03) y generar el token con la versión vigente
+        usuarioRepository.actualizarUltimaActividad(usuario.getId(), OffsetDateTime.now());
+        int tokenVersion = usuario.getTokenVersion() != null ? usuario.getTokenVersion() : 0;
+        String tokenReal = jwtProvider.generateToken(usuario.getDocumento(), tokenVersion);
 
         // 6. Mapear respuesta a DTO
         UsuarioResponseDTO usuarioDTO = UsuarioResponseDTO.builder()
@@ -75,5 +87,13 @@ public class AuthService {
                 .tipoToken("Bearer")
                 .usuario(usuarioDTO)
                 .build();
+    }
+
+    // Cierra la sesión invalidando todos los tokens emitidos al usuario (F-04)
+    @Transactional
+    public void cerrarSesion(String documento) {
+        Usuario usuario = usuarioRepository.findByDocumento(documento)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+        usuarioRepository.invalidarTokens(usuario.getId());
     }
 }

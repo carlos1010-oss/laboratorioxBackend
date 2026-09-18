@@ -7,6 +7,7 @@ import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
 import Laboratorio_lex.modules.auditoria.service.AuditoriaService;
 import Laboratorio_lex.modules.personal.dto.EmpleadoRequestDTO;
 import Laboratorio_lex.modules.personal.dto.EmpleadoResponseDTO;
+import Laboratorio_lex.modules.personal.dto.EmpleadoUpdateDTO;
 import Laboratorio_lex.modules.personal.model.Departamento;
 import Laboratorio_lex.modules.personal.model.Empleado;
 import Laboratorio_lex.modules.personal.model.EstadoEmpleado;
@@ -61,6 +62,10 @@ public class EmpleadoService {
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 "Departamento no encontrado con ID: " + dto.getDepartamentoId()));
 
+                // F-17: si el estado no es ACTIVO, el motivo es obligatorio
+                EstadoEmpleado estado = dto.getEstado() != null ? dto.getEstado() : EstadoEmpleado.ACTIVO;
+                validarMotivoEstado(estado, dto.getMotivoCambioEstado());
+
                 Empleado empleado = Empleado.builder()
                                 .tipoDocumento(dto.getTipoDocumento())
                                 .numeroDocumento(dto.getNumeroDocumento())
@@ -70,7 +75,8 @@ public class EmpleadoService {
                                 .telefono(dto.getTelefono())
                                 .departamento(departamento)
                                 .codigoTarjetaRfid(dto.getCodigoTarjetaRfid())
-                                .estado(EstadoEmpleado.ACTIVO)
+                                .estado(estado)
+                                .motivoCambioEstado(estado == EstadoEmpleado.ACTIVO ? null : dto.getMotivoCambioEstado())
                                 .build();
 
                 Empleado guardado = empleadoRepository.save(empleado);
@@ -82,22 +88,108 @@ public class EmpleadoService {
                 return response;
         }
 
+        // F-16: modifica los datos del empleado; el número de documento es inmutable
+        @Transactional
+        public EmpleadoResponseDTO actualizarEmpleado(Long id, EmpleadoUpdateDTO dto) {
+                Empleado empleado = empleadoRepository.findById(id)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Empleado no encontrado con ID: " + id));
+
+                // F-16: rechazar cualquier intento de cambiar el documento
+                if (dto.getNumeroDocumento() != null && !dto.getNumeroDocumento().isBlank()
+                                && !dto.getNumeroDocumento().equals(empleado.getNumeroDocumento())) {
+                        throw new BadRequestException(
+                                        "El número de documento es inmutable y no puede modificarse (F-16).");
+                }
+
+                Departamento departamento = departamentoRepository.findById(dto.getDepartamentoId())
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Departamento no encontrado con ID: " + dto.getDepartamentoId()));
+
+                EmpleadoResponseDTO estadoAnterior = convertirADTO(empleado);
+
+                empleado.setTipoDocumento(dto.getTipoDocumento());
+                empleado.setNombres(dto.getNombres());
+                empleado.setApellidos(dto.getApellidos());
+                empleado.setCorreo(dto.getCorreo());
+                empleado.setTelefono(dto.getTelefono());
+                empleado.setDepartamento(departamento);
+
+                Empleado actualizado = empleadoRepository.save(empleado);
+                EmpleadoResponseDTO estadoNuevo = convertirADTO(actualizado);
+
+                registrarAuditoria(estadoAnterior, estadoNuevo, TipoOperacion.MODIFICACION);
+
+                return estadoNuevo;
+        }
+
+        // F-19: asigna o reasigna una credencial RFID/NFC (simulada por su número)
+        @Transactional
+        public EmpleadoResponseDTO asignarTarjeta(Long id, String codigoTarjeta) {
+                Empleado empleado = empleadoRepository.findById(id)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Empleado no encontrado con ID: " + id));
+
+                if (codigoTarjeta == null || codigoTarjeta.isBlank()) {
+                        throw new BadRequestException("El código de la tarjeta RFID/NFC es obligatorio (F-19).");
+                }
+
+                empleadoRepository.findByCodigoTarjetaRfid(codigoTarjeta).ifPresent(otro -> {
+                        if (!otro.getId().equals(id)) {
+                                throw new BadRequestException(
+                                                "La tarjeta RFID/NFC ya está asignada a otro empleado: " + codigoTarjeta);
+                        }
+                });
+
+                EmpleadoResponseDTO estadoAnterior = convertirADTO(empleado);
+                empleado.setCodigoTarjetaRfid(codigoTarjeta);
+                EmpleadoResponseDTO estadoNuevo = convertirADTO(empleadoRepository.save(empleado));
+
+                registrarAuditoria(estadoAnterior, estadoNuevo, TipoOperacion.MODIFICACION);
+
+                return estadoNuevo;
+        }
+
+        // F-19: desvincula la credencial RFID/NFC del empleado
+        @Transactional
+        public EmpleadoResponseDTO desvincularTarjeta(Long id) {
+                Empleado empleado = empleadoRepository.findById(id)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Empleado no encontrado con ID: " + id));
+
+                if (empleado.getCodigoTarjetaRfid() == null) {
+                        throw new BadRequestException("El empleado no tiene una tarjeta RFID/NFC asignada.");
+                }
+
+                EmpleadoResponseDTO estadoAnterior = convertirADTO(empleado);
+                empleado.setCodigoTarjetaRfid(null);
+                EmpleadoResponseDTO estadoNuevo = convertirADTO(empleadoRepository.save(empleado));
+
+                registrarAuditoria(estadoAnterior, estadoNuevo, TipoOperacion.MODIFICACION);
+
+                return estadoNuevo;
+        }
+
         @Transactional
         public EmpleadoResponseDTO cambiarEstado(Long id, EstadoEmpleado nuevoEstado, String motivo) {
                 Empleado empleado = empleadoRepository.findById(id)
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 "Empleado no encontrado con ID: " + id));
 
+                // F-17: motivo obligatorio al inactivar o bloquear
+                validarMotivoEstado(nuevoEstado, motivo);
+
                 EmpleadoResponseDTO estadoAnterior = convertirADTO(empleado);
 
                 empleado.setEstado(nuevoEstado);
-                empleado.setMotivoCambioEstado(motivo);
+                empleado.setMotivoCambioEstado(nuevoEstado == EstadoEmpleado.ACTIVO ? null : motivo);
 
                 Empleado actualizado = empleadoRepository.save(empleado);
                 EmpleadoResponseDTO estadoNuevo = convertirADTO(actualizado);
 
                 // Determinar tipo de operación para la bitácora (BLOQUEO / MODIFICACION)
-                TipoOperacion operacion = (nuevoEstado == EstadoEmpleado.INACTIVO)
+                TipoOperacion operacion = (nuevoEstado == EstadoEmpleado.INACTIVO
+                                || nuevoEstado == EstadoEmpleado.BLOQUEADO)
                                 ? TipoOperacion.BLOQUEO
                                 : TipoOperacion.MODIFICACION;
 
@@ -105,6 +197,15 @@ public class EmpleadoService {
                 registrarAuditoria(estadoAnterior, estadoNuevo, operacion);
 
                 return estadoNuevo;
+        }
+
+        // F-17: valida que el motivo esté presente cuando el estado no es ACTIVO
+        private void validarMotivoEstado(EstadoEmpleado estado, String motivo) {
+                if (estado != null && estado != EstadoEmpleado.ACTIVO
+                                && (motivo == null || motivo.isBlank())) {
+                        throw new BadRequestException(
+                                        "El motivo de cambio de estado es obligatorio cuando el estado es INACTIVO o BLOQUEADO (F-17).");
+                }
         }
 
         private void registrarAuditoria(Object anterior, Object nuevo, TipoOperacion operacion) {
