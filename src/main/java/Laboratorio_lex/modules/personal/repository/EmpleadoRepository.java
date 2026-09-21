@@ -25,8 +25,14 @@ public interface EmpleadoRepository
     boolean existsByCodigoTarjetaRfid(String codigoTarjetaRfid);
 
     // Búsqueda para filtros en pantalla por departamento (F-34)
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"departamento"})
     List<Empleado> findByDepartamentoId(Integer departamentoId);
 
     // Búsqueda por estado
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"departamento"})
     List<Empleado> findByEstado(EstadoEmpleado estado);
+    
+    @Override
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"departamento"})
+    List<Empleado> findAll();
 }
