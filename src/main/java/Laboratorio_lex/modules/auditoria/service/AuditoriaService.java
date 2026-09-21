@@ -47,6 +47,14 @@ public class AuditoriaService {
     }
 
     @Transactional(readOnly = true)
+    public AuditoriaResponseDTO obtenerPorId(java.util.UUID id) {
+        return bitacoraAuditoriaRepository.findById(id)
+                .map(this::convertirADTO)
+                .orElseThrow(() -> new Laboratorio_lex.common.exception.ResourceNotFoundException(
+                        "Evento de auditoría no encontrado con id: " + id));
+    }
+
+    @Transactional(readOnly = true)
     public Page<AuditoriaResponseDTO> obtenerPaginado(
             Long usuarioId,
             TipoOperacion tipoOperacion,

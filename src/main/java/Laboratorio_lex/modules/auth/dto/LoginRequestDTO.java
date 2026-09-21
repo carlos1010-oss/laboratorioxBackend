@@ -10,8 +10,9 @@ import lombok.*;
 @Builder
 public class LoginRequestDTO {
 
-    @NotBlank(message = "El número de documento es obligatorio")
     private String documento;
+
+    private String correo;
 
     @NotBlank(message = "La contraseña no puede estar vacía")
     private String password;

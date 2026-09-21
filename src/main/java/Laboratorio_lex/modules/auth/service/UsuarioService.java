@@ -6,6 +6,7 @@ import Laboratorio_lex.modules.auditoria.dto.AuditoriaRequestDTO;
 import Laboratorio_lex.modules.auditoria.model.TipoOperacion;
 import Laboratorio_lex.modules.auditoria.service.AuditoriaService;
 import Laboratorio_lex.modules.auditoria.util.AuditoriaContexto;
+import Laboratorio_lex.modules.auth.dto.ResetPasswordAdminDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioCreacionDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioModificacionDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioResponseDTO;
@@ -43,15 +44,13 @@ public class UsuarioService {
 
     @Transactional(readOnly = true)
     public UsuarioResponseDTO obtenerPorId(Long id) {
-        Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
-        return convertirADTO(usuario);
+        return convertirADTO(buscar(id));
     }
 
     @Transactional
     public UsuarioResponseDTO crearUsuario(UsuarioCreacionDTO dto) {
         if (usuarioRepository.existsByDocumento(dto.getDocumento())) {
-            throw new BadRequestException("Ya existe un usuario con el documento: " + dto.getDocumento());
+            throw new BadRequestException("Ya existe un usuario registrado con el documento: " + dto.getDocumento());
         }
 
         if (usuarioRepository.existsByCorreo(dto.getCorreo())) {
@@ -82,9 +81,7 @@ public class UsuarioService {
 
     @Transactional
     public UsuarioResponseDTO actualizarUsuario(Long id, UsuarioModificacionDTO dto) {
-        Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
-
+        Usuario usuario = buscar(id);
         UsuarioResponseDTO estadoAnterior = convertirADTO(usuario);
 
         Rol rol = rolRepository.findById(dto.getRolId())
@@ -93,7 +90,11 @@ public class UsuarioService {
         // F-10: no degradar al único Administrador activo
         if (esUltimoAdministradorActivo(usuario) && !"ADMINISTRADOR".equals(rol.getNombre())) {
             throw new BadRequestException(
-                    "No es posible modificar el rol del único Administrador activo en el sistema");
+                    "No es posible cambiar el rol del único Administrador activo en el sistema");
+        }
+
+        if (!usuario.getCorreo().equals(dto.getCorreo()) && usuarioRepository.existsByCorreo(dto.getCorreo())) {
+            throw new BadRequestException("Ya existe un usuario registrado con el correo: " + dto.getCorreo());
         }
 
         usuario.setNombres(dto.getNombres());
@@ -111,9 +112,7 @@ public class UsuarioService {
 
     @Transactional
     public UsuarioResponseDTO cambiarEstado(Long id, EstadoUsuario nuevoEstado) {
-        Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
-
+        Usuario usuario = buscar(id);
         UsuarioResponseDTO estadoAnterior = convertirADTO(usuario);
 
         // F-10: no bloquear/desactivar al único Administrador activo
@@ -141,6 +140,40 @@ public class UsuarioService {
         return estadoNuevo;
     }
 
+    // Reseteo administrativo de contraseña
+    @Transactional
+    public UsuarioResponseDTO restablecerPasswordPorAdmin(Long id, ResetPasswordAdminDTO dto) {
+        Usuario usuario = buscar(id);
+        UsuarioResponseDTO estadoAnterior = convertirADTO(usuario);
+
+        usuario.setPasswordHash(passwordEncoder.encode(dto.getNuevaPassword()));
+        usuario.setIntentosFallidos((short) 0);
+        if (usuario.getEstado() == EstadoUsuario.BLOQUEADO) {
+            usuario.setEstado(EstadoUsuario.ACTIVO);
+        }
+
+        Usuario actualizado = usuarioRepository.save(usuario);
+        usuarioRepository.invalidarTokens(usuario.getId());
+
+        UsuarioResponseDTO estadoNuevo = convertirADTO(actualizado);
+        registrarAuditoria(estadoAnterior, estadoNuevo, TipoOperacion.MODIFICACION);
+
+        return estadoNuevo;
+    }
+
+    private boolean esUltimoAdministradorActivo(Usuario usuario) {
+        if (!"ADMINISTRADOR".equals(usuario.getRol().getNombre())
+                || usuario.getEstado() != EstadoUsuario.ACTIVO) {
+            return false;
+        }
+        return usuarioRepository.countByRol_NombreAndEstado("ADMINISTRADOR", EstadoUsuario.ACTIVO) <= 1;
+    }
+
+    private Usuario buscar(Long id) {
+        return usuarioRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
+    }
+
     private void registrarAuditoria(Object anterior, Object nuevo, TipoOperacion operacion) {
         try {
             String jsonAnterior = anterior != null ? objectMapper.writeValueAsString(anterior) : null;
@@ -163,16 +196,6 @@ public class UsuarioService {
         }
     }
 
-    private boolean esUltimoAdministradorActivo(Usuario usuario) {
-        if (usuario.getRol() == null || !"ADMINISTRADOR".equals(usuario.getRol().getNombre())) {
-            return false;
-        }
-        if (usuario.getEstado() != EstadoUsuario.ACTIVO) {
-            return false;
-        }
-        return usuarioRepository.countByRol_NombreAndEstado("ADMINISTRADOR", EstadoUsuario.ACTIVO) <= 1;
-    }
-
     private UsuarioResponseDTO convertirADTO(Usuario u) {
         return UsuarioResponseDTO.builder()
                 .id(u.getId())
@@ -180,8 +203,8 @@ public class UsuarioService {
                 .nombres(u.getNombres())
                 .apellidos(u.getApellidos())
                 .correo(u.getCorreo())
-                .estado(u.getEstado() != null ? u.getEstado().name() : null)
-                .rol(u.getRol() != null ? u.getRol().getNombre() : null)
+                .estado(u.getEstado().name())
+                .rol(u.getRol().getNombre())
                 .createdAt(u.getCreatedAt())
                 .build();
     }

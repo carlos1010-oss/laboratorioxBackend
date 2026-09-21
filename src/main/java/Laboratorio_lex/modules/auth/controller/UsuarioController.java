@@ -1,5 +1,6 @@
 package Laboratorio_lex.modules.auth.controller;
 
+import Laboratorio_lex.modules.auth.dto.ResetPasswordAdminDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioCreacionDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioModificacionDTO;
 import Laboratorio_lex.modules.auth.dto.UsuarioResponseDTO;
@@ -47,5 +48,12 @@ public class UsuarioController {
             @PathVariable Long id,
             @RequestParam EstadoUsuario nuevoEstado) {
         return ResponseEntity.ok(usuarioService.cambiarEstado(id, nuevoEstado));
+    }
+
+    @PatchMapping("/{id}/password")
+    public ResponseEntity<UsuarioResponseDTO> restablecerPassword(
+            @PathVariable Long id,
+            @Valid @RequestBody ResetPasswordAdminDTO dto) {
+        return ResponseEntity.ok(usuarioService.restablecerPasswordPorAdmin(id, dto));
     }
 }

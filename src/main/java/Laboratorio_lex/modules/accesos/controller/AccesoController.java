@@ -7,7 +7,6 @@ import Laboratorio_lex.modules.accesos.service.HistorialExportService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -28,7 +27,8 @@ public class AccesoController {
     private final AccesoService accesoService;
     private final HistorialExportService historialExportService;
 
-    @PostMapping("/molinete")
+    // F-20 / F-21: simulación de acceso físico en molinete y verificación directa desde simulador
+    @PostMapping({"/molinete", "/verificar"})
     public ResponseEntity<ResultadoAccesoResponseDTO> registrarAccesoMolinete(
             @Valid @RequestBody RegistroAccesoRequestDTO dto,
             HttpServletRequest request) {
@@ -37,14 +37,23 @@ public class AccesoController {
         return ResponseEntity.ok(accesoService.procesarAccesoMolinete(dto, ipOrigen, userAgent));
     }
 
-    // F-24: historial filtrado por documento, área y rango de fechas (paginado)
+    // F-24: historial filtrado por documento, área y rango de fechas
+    // Soporta retorno directo de array (si no se envía page/size) o paginación estándar
     @GetMapping("/historial")
-    public ResponseEntity<Page<ResultadoAccesoResponseDTO>> obtenerHistorial(
+    public ResponseEntity<?> obtenerHistorial(
             @RequestParam(required = false) String numeroDocumento,
             @RequestParam(required = false) Integer areaId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime fechaInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime fechaFin,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             @PageableDefault(size = 50, sort = "timestamp", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        if (page == null && size == null) {
+            return ResponseEntity.ok(
+                    accesoService.listarParaExportar(numeroDocumento, areaId, fechaInicio, fechaFin));
+        }
+
         return ResponseEntity.ok(
                 accesoService.buscarHistorial(numeroDocumento, areaId, fechaInicio, fechaFin, pageable));
     }

@@ -2,6 +2,10 @@ package Laboratorio_lex.modules.accesos.repository;
 
 import Laboratorio_lex.modules.accesos.model.HistorialAcceso;
 import Laboratorio_lex.modules.accesos.model.ResultadoAcceso;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -16,7 +20,29 @@ import java.util.UUID;
 public interface HistorialAccesoRepository extends JpaRepository<HistorialAcceso, UUID>,
         JpaSpecificationExecutor<HistorialAcceso> {
 
-    // Consulta de accesos por rango de fechas (útil para auditoría e integración internacional)
+    // Optimización N+1 con EntityGraph para carga eficiente de Empleado y Área
+    @Override
+    @EntityGraph(attributePaths = {"empleado", "area"})
+    Page<HistorialAcceso> findAll(Specification<HistorialAcceso> spec, Pageable pageable);
+
+    // Búsqueda personalizada por documento ingresado
+    @EntityGraph(attributePaths = {"empleado", "area"})
+    List<HistorialAcceso> findByNumeroDocumentoIngresado(String numeroDocumentoIngresado);
+
+    // Búsqueda personalizada por código de tarjeta ingresado
+    @EntityGraph(attributePaths = {"empleado", "area"})
+    List<HistorialAcceso> findByCodigoTarjetaIngresado(String codigoTarjetaIngresado);
+
+    // Búsqueda personalizada por empleado
+    @EntityGraph(attributePaths = {"empleado", "area"})
+    List<HistorialAcceso> findByEmpleadoId(Long empleadoId);
+
+    // Búsqueda personalizada por área
+    @EntityGraph(attributePaths = {"empleado", "area"})
+    List<HistorialAcceso> findByAreaId(Integer areaId);
+
+    // Consulta de accesos por rango de fechas
+    @EntityGraph(attributePaths = {"empleado", "area"})
     List<HistorialAcceso> findByTimestampBetween(OffsetDateTime inicio, OffsetDateTime fin);
 
     // Total de intentos en un periodo (F-26)
