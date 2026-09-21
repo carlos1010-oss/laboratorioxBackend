@@ -128,6 +128,10 @@ public class AccesoService {
                 ? h.getEmpleado().getNombres() + " " + h.getEmpleado().getApellidos()
                 : "DESCONOCIDO";
 
+        String estadoEmp = (h.getEmpleado() != null && h.getEmpleado().getEstado() != null)
+                ? h.getEmpleado().getEstado().name()
+                : "NO_REGISTRADO";
+
         String nombreArea = (h.getArea() != null) ? h.getArea().getNombre() : "N/A";
 
         return ResultadoAccesoResponseDTO.builder()
@@ -135,6 +139,7 @@ public class AccesoService {
                 .numeroDocumentoIngresado(h.getNumeroDocumentoIngresado())
                 .codigoTarjetaRfid(h.getCodigoTarjetaIngresado())
                 .nombreEmpleado(nombreEmp)
+                .estadoEmpleado(estadoEmp)
                 .nombreArea(nombreArea)
                 .resultado(h.getResultado())
                 .color(colorDe(h.getResultado()))

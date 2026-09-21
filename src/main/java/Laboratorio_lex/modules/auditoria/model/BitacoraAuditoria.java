@@ -33,7 +33,7 @@ public class BitacoraAuditoria {
     private String direccionIp;
 
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    
     @Column(name = "tipo_operacion", nullable = false, columnDefinition = "tipo_operacion_enum")
     private TipoOperacion tipoOperacion;
 

@@ -17,6 +17,7 @@ public class ResultadoAccesoResponseDTO {
     private String numeroDocumentoIngresado;
     private String codigoTarjetaRfid;
     private String nombreEmpleado;
+    private String estadoEmpleado; // New field
     private String nombreArea;
     private ResultadoAcceso resultado; // AUTORIZADO, DENEGADO o NO_REGISTRADO
 
