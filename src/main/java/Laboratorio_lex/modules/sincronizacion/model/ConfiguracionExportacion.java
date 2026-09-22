@@ -1,6 +1,9 @@
 package Laboratorio_lex.modules.sincronizacion.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import lombok.*;
 
 import java.time.LocalTime;
@@ -19,17 +22,22 @@ public class ConfiguracionExportacion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Short id;
 
-    // DIARIA | SEMANAL | MENSUAL (CHECK en BD)
+    // DIARIA | SEMANAL | MENSUAL (CHECK en BD + validación Bean)
+    @NotBlank
+    @Pattern(regexp = "^(DIARIA|SEMANAL|MENSUAL)$", message = "Frecuencia debe ser DIARIA, SEMANAL o MENSUAL")
     @Column(nullable = false)
     private String frecuencia;
 
     @Column(name = "dia_semana")
     private Short diaSemana;
 
+    @NotNull
     @Column(nullable = false)
     private LocalTime hora;
 
     // Solo JSON por ahora (CHECK en BD)
+    @NotBlank
+    @Pattern(regexp = "^JSON$", message = "Formato debe ser JSON")
     @Column(nullable = false)
     private String formato;
 
@@ -39,6 +47,7 @@ public class ConfiguracionExportacion {
     @Column(name = "correo_alerta")
     private String correoAlerta;
 
+    @NotNull
     @Column(nullable = false)
     private Boolean activo;
 

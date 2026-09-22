@@ -36,8 +36,8 @@ public class Usuario {
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "estado_usuario")
     private EstadoUsuario estado;
 
     @Column(name = "intentos_fallidos", nullable = false)
