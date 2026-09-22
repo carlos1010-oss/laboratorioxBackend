@@ -38,8 +38,10 @@ public class SecurityConfig {
                 .headers(headers -> headers
                         .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
 
-                // 3. Política de sesión Stateless (JWT)
+                // 3. Política de sesión Stateless (JWT) + sin login de navegador
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
 
                 // 4. Respuestas JSON ante fallos de autenticación/autorización (NF-15)
                 .exceptionHandling(ex -> ex
