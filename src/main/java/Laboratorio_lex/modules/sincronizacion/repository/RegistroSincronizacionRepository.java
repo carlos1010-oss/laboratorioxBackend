@@ -17,7 +17,7 @@ public interface RegistroSincronizacionRepository extends JpaRepository<Registro
 
     long countByEstado(EstadoSincronizacion estado);
 
-    @Query(value = "SELECT r FROM zone_control.registro_sincronizacion_socio r WHERE r.estado = :estado::estado_sincronizacion_enum AND r.fecha_proximo_reintento < :fecha", nativeQuery = true)
+    @Query("SELECT r FROM RegistroSincronizacionSocio r WHERE r.estado = :estado AND r.fechaProximoReintento < :fecha")
     List<RegistroSincronizacionSocio> findByEstadoAndFechaProximoReintentoBefore(
             @Param("estado") EstadoSincronizacion estado, @Param("fecha") OffsetDateTime fecha);
 }
