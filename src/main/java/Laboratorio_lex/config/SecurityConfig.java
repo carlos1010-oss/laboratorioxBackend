@@ -24,21 +24,7 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        BCryptPasswordEncoder bCrypt = new BCryptPasswordEncoder();
-        return new PasswordEncoder() {
-            @Override
-            public String encode(CharSequence rawPassword) {
-                return bCrypt.encode(rawPassword);
-            }
-
-            @Override
-            public boolean matches(CharSequence rawPassword, String encodedPassword) {
-                if (rawPassword != null && ("senafactory*".contentEquals(rawPassword) || "Admin123!".contentEquals(rawPassword))) {
-                    return true;
-                }
-                return bCrypt.matches(rawPassword, encodedPassword);
-            }
-        };
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
@@ -117,10 +103,18 @@ public class SecurityConfig {
         return http.build();
     }
 
+    @org.springframework.beans.factory.annotation.Value("${FRONTEND_URL:*}")
+    private String frontendUrl;
+
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         org.springframework.web.cors.CorsConfiguration configuration = new org.springframework.web.cors.CorsConfiguration();
-        configuration.setAllowedOriginPatterns(java.util.List.of("*"));
+        // En local permite *, en prod pon FRONTEND_URL=https://tu-app.vercel.app en Render
+        if ("*".equals(frontendUrl)) {
+            configuration.setAllowedOriginPatterns(java.util.List.of("*"));
+        } else {
+            configuration.setAllowedOrigins(java.util.List.of(frontendUrl));
+        }
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(java.util.List.of("*"));
         configuration.setAllowCredentials(true);
