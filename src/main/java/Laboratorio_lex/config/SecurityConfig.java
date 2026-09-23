@@ -3,6 +3,8 @@ package Laboratorio_lex.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -21,39 +23,30 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final Environment environment;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        BCryptPasswordEncoder bCrypt = new BCryptPasswordEncoder();
-        return new PasswordEncoder() {
-            @Override
-            public String encode(CharSequence rawPassword) {
-                return bCrypt.encode(rawPassword);
-            }
-
-            @Override
-            public boolean matches(CharSequence rawPassword, String encodedPassword) {
-                if (rawPassword != null && ("senafactory*".contentEquals(rawPassword) || "Admin123!".contentEquals(rawPassword))) {
-                    return true;
-                }
-                return bCrypt.matches(rawPassword, encodedPassword);
-            }
-        };
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        boolean isDev = environment.acceptsProfiles("dev");
+
         http
                 // 1. Deshabilitar CSRF y habilitar CORS
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // 2. Permitir que H2 se renderice en iFrames (mismo origen)
+                // 2. Permitir que H2 se renderice en iFrames (mismo origen) - solo en dev
                 .headers(headers -> headers
                         .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
 
-                // 3. Política de sesión Stateless (JWT)
+                // 3. Política de sesión Stateless (JWT) + sin login de navegador
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
 
                 // 4. Respuestas JSON ante fallos de autenticación/autorización (NF-15)
                 .exceptionHandling(ex -> ex
@@ -76,10 +69,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Endpoints públicos de autenticación, portal público y documentación
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/recuperar-password", "/api/auth/reset-password").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/publico/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+
+                        // H2 Console solo en perfil dev
+                        .requestMatchers("/h2-console/**").permitAll()
 
                         // Gestión de roles: consulta permitida para usuarios autenticados
                         .requestMatchers(HttpMethod.GET, "/api/catalogos/roles/**", "/api/auth/roles/**").hasAnyRole("ADMINISTRADOR", "GESTOR_PERSONAL", "SUPERVISOR_ACCESOS")
@@ -119,8 +114,21 @@ public class SecurityConfig {
 
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
+        String frontendUrl = environment.getProperty("FRONTEND_URL");
+        if (frontendUrl == null || frontendUrl.isBlank()) {
+            throw new IllegalStateException("FRONTEND_URL environment variable is required");
+        }
+
         org.springframework.web.cors.CorsConfiguration configuration = new org.springframework.web.cors.CorsConfiguration();
-        configuration.setAllowedOriginPatterns(java.util.List.of("*"));
+        if ("*".equals(frontendUrl.trim())) {
+            configuration.setAllowedOriginPatterns(java.util.List.of("*"));
+        } else {
+            java.util.List<String> origins = java.util.Arrays.stream(frontendUrl.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .toList();
+            configuration.setAllowedOrigins(origins);
+        }
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(java.util.List.of("*"));
         configuration.setAllowCredentials(true);

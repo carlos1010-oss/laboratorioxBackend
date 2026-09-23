@@ -46,7 +46,8 @@ public class Empleado {
     private String codigoTarjetaRfid;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado", nullable = false, columnDefinition = "zone_control.estadoempleado")
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "estado_empleado")
     private EstadoEmpleado estado;
 
     @Column(name = "motivo_cambio_estado", columnDefinition = "TEXT")

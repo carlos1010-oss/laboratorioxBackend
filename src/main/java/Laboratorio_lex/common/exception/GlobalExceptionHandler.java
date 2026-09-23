@@ -176,6 +176,22 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorDTO, HttpStatus.FORBIDDEN);
     }
 
+    // Captura ordenación por campo inexistente (HTTP 400) - ej. sort=string en Empleado
+    @ExceptionHandler(org.springframework.data.mapping.PropertyReferenceException.class)
+    public ResponseEntity<ErrorResponseDTO> handlePropertyReference(
+            org.springframework.data.mapping.PropertyReferenceException ex, HttpServletRequest request) {
+
+        ErrorResponseDTO errorDTO = ErrorResponseDTO.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+                .message("Campo de ordenación inválido: " + ex.getPropertyName())
+                .path(request.getRequestURI())
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        return new ResponseEntity<>(errorDTO, HttpStatus.BAD_REQUEST);
+    }
+
     // Captura cualquier otro error no controlado (HTTP 500)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDTO> handleGlobalException(

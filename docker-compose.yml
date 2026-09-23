@@ -6,8 +6,8 @@ services:
     container_name: laboratoriox_db
     environment:
       POSTGRES_DB: zone_control
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin1234
+      POSTGRES_USER: zone_user
+      POSTGRES_PASSWORD: ZoneControl2026*
     ports:
       - "5432:5432"
     volumes:

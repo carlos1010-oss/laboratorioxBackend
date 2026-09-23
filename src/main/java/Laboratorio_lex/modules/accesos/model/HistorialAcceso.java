@@ -39,7 +39,8 @@ public class HistorialAcceso {
     private AreaRestringida area;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "resultado_acceso", nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "resultado_acceso", nullable = false, columnDefinition = "resultado_acceso_enum")
     private ResultadoAcceso resultado;
 
     @Column(name = "motivo_denegacion", length = 255)

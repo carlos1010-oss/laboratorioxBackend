@@ -1,16 +1,17 @@
 # Zone Control — Progreso del Backend
 
 > Documento de continuidad para retomar el trabajo en otra sesión sin contexto previo.
-> Última actualización: Fase 7 completada (F-34: búsqueda/paginación en personal; F-35: portal público). RF funcionales (F-01..F-35) del backlog cubiertos salvo F-25-PDF (aplazado).
+> Última actualización: Fase 8 completada (Despliegue exitoso en Render y Aiven PostgreSQL en producción con Flyway V1-V5). RF funcionales (F-01..F-35) del backlog cubiertos salvo F-25-PDF (aplazado intencionalmente).
 
 ## Ubicación y stack
 
-- Repo backend: `C:\Users\admin\Documents\laboratorioxBackend\Laboratorio_lex`
-- Paquete raíz Java: `Laboratorio_lex` (ojo: no coincide con el `groupId` del pom `com.laboratorioxyz`).
-- Spring Boot 3.2.5 · Java 21 · Maven Wrapper (`.\mvnw.cmd`) · Hibernate 6.4 · Flyway 9.22.3.
-- Frontend Next.js: **no está en este repo** (vive en otra carpeta, pendiente de integrar).
-- BD: PostgreSQL 18.4, esquema `zone_control`, `spring.jpa.hibernate.ddl-auto=validate`.
-- Credenciales BD en `src/main/resources/application.properties` (usuario `postgres`).
+- Repo backend local: `c:\Users\ccamachor\Desktop\laboratorioxBackend`
+- GitHub Remoto: `https://github.com/carlos1010-oss/laboratorioxBackend.git` (rama `main`)
+- Producción Render: `https://laboratorio-zone-control.onrender.com` (Swagger UI: `/swagger-ui.html`)
+- Paquete raíz Java: `Laboratorio_lex` (groupId Maven: `com.laboratorioxyz`, artifactId: `zone-control`).
+- Spring Boot 3.2.5 · Java 21 · Docker Multi-stage · Hibernate 6.4 · Flyway 9.22.3 · HikariCP.
+- Frontend Next.js: Repositorio separado (pendiente de conectar a Render vía `NEXT_PUBLIC_API_URL`).
+- BD Nube: Aiven PostgreSQL 18.6, esquema `zone_control`, migraciones V1 a V5 aplicadas.
 
 ## Comandos útiles
 
@@ -232,29 +233,45 @@ Evidencia de la verificación (instancia 8081, datos de prueba luego eliminados)
 > enumerar documentos/tarjetas existentes (no devuelve datos personales). Si se despliega a producción real se
 > recomienda rate-limiting/preguntas adicionales. La simulación pública sí deja trazabilidad en `historial_accesos`.
 
+## Estado: Fase 8 — COMPLETADA (Preparación para producción, nube Aiven + Render y verificación E2E)
+
+Alineación completa del backend para despliegue en contenedores Docker y servicios cloud gestionados.
+
+Cambios hechos:
+- **Enum Mapping PG**: Mapeo nativo en las 5 entidades (`Usuario`, `Empleado`, `HistorialAcceso`, `BitacoraAuditoria`, `RegistroSincronizacionSocio`) con `@JdbcTypeCode(SqlTypes.NAMED_ENUM)` y `columnDefinition`, resolviendo incompatibilidad de tipos `VARCHAR` vs `NAMED_ENUM` en PostgreSQL.
+- **Sincronización (`RegistroSincronizacionRepository`)**: Sustitución de query nativo roto por JPQL estándar tipado compatible con Hibernate 6 y PostgreSQL sin errores de columnas inexistentes.
+- **Pool de Conexiones HikariCP**: Configuración de `maximum-pool-size=3` y timeouts en `application-prod.properties` para prevenir saturación de slots en planes Free de Aiven (`FATAL: remaining connection slots are reserved for roles with the SUPERUSER attribute`).
+- **Migración V5**: `V5__bitacora_direccion_ip_index.sql` aplicada con éxito en Aiven creando el índice `idx_bitacora_direccion_ip` sobre `bitacora_auditoria.direccion_ip`.
+- **CORS dinámico**: `SecurityConfig.java` actualizado con `setAllowedOriginPatterns` cuando `FRONTEND_URL=*` y soporte para lista de dominios por comas, habilitando compatibilidad con credenciales (`allowCredentials=true`) para el frontend en Vercel.
+- **Dockerfile Cloud**: Eliminada la bandera offline `-o` de `mvn package` para permitir la descarga de dependencias en builds limpios de Render.
+- **Perfil de Producción**: `application-prod.properties` corregido (eliminada referencia circular de `spring.profiles.active` y corregido typo en `spring.flyway.schemas`).
+
+Evidencia de la verificación en vivo:
+1. Base de datos Aiven (PostgreSQL 18.6) sincronizada con Flyway V1 a V5 (`Current version of schema "zone_control": 5`). ✔
+2. Creación en vivo mediante Swagger de roles operativos: Gestor de Personal (`1000000002`, 201 Created) y Supervisor de Accesos (`1000000003`, 201 Created). Listado `GET /api/auth/usuarios` devuelve los 3 usuarios activos. ✔
+3. F-05 verificado: `POST /api/auth/recuperar-password` genera token temporal de un solo uso con persistencia en `tokens_recuperacion`, y rechazo inmediato ante reuso. ✔
+4. Despliegue en Render exitoso: Servicio activo en `https://laboratorio-zone-control.onrender.com` con Swagger UI (`/swagger-ui.html`) y Tomcat en puerto 10000. ✔
+
 ## Backlog pendiente (por RF/HU)
 
 Prioridad Alta:
 - (ninguno de F-01..F-35 queda pendiente; la única pieza aplazada es el formato PDF de F-25 — ver decisión arriba)
 
 Prioridad Media/Baja:
-- (ninguno; los RF funcionales están cubiertos. Pendientes no funcionales: credenciales a variables de entorno,
-  pruebas automatizadas, y los insumos externos: URL real del socio + SMTP para salir del modo simulación)
+- Integración con el Frontend Next.js en Vercel (apuntar `NEXT_PUBLIC_API_URL` a `https://laboratorio-zone-control.onrender.com`).
+- Configuración de credenciales SMTP reales para envío de correos fuera del modo demo.
 
 ## Bugs conocidos / decisiones pendientes
 
 1. ~~**F-08 roto**~~ RESUELTO en Fase 2 (`noRollbackFor`); verificado que el contador persiste.
 2. ~~Credenciales inválidas devuelven HTTP 500~~ RESUELTO: ahora 401/403 con mensaje amigable (NF-15).
 3. ~~`SecurityConfig` abre `/api/auth/**` con `permitAll()`~~ RESUELTO: RBAC por rol aplicado y verificado.
-4. `application.properties` tiene credenciales y `jwt.secret` hardcodeados (pendiente: variables de entorno).
-5. Flyway 9.22.3 advierte que PostgreSQL 18 no está probado (funciona igual). Considerar subir Flyway si hay problemas.
-6. La sesión se valida contra BD en cada petición (una escritura por request para `ultima_actividad`). Suficiente para el
-   laboratorio; si se requiere alto rendimiento, cachear la actividad y persistir cada N segundos.
-7. El reintento programado (`@Scheduled` cada 5 min) solo procesa registros `EN_REINTENTO` con `fecha_proximo_reintento < now`,
-   así que un envío roto tarda ~`max-reintentos × reintento-minutos` en quedar FALLIDO (para probar el corte se redujo
-   `integracion.socio.max-reintentos` a 1 y se restauró a 3). El reenvío manual reinicia el contador de intentos a 0.
-8. En la consulta JPQL del consolidado (F-26) los comparativos de enum van **por parámetro**; Hibernate genera `::ResultadoAcceso`
-   (nombre Java) si se usan literales y PostgreSQL no reconoce ese tipo.
+4. ~~`application.properties` tiene credenciales hardcodeadas~~ RESUELTO en Fase 8: parametrizado 100% mediante variables de entorno en Render (`SPRING_DATASOURCE_*`, `JWT_SECRET`, `FRONTEND_URL`) y perfil `application-prod.properties`.
+5. ~~Error de conexión Aiven por slots saturados~~ RESUELTO en Fase 8: HikariCP limitado a 3 conexiones en producción.
+6. ~~CORS bloquea credenciales con wildcard *~~ RESUELTO en Fase 8: uso de `setAllowedOriginPatterns` dinámico.
+7. ~~Error en compilación Docker por flag -o~~ RESUELTO en Fase 8: `mvn clean package`.
+8. Flyway 9.22.3 advierte que PostgreSQL 18 no está probado (funciona y valida correctamente las 5 migraciones en Aiven).
+9. La sesión se valida contra BD en cada petición (una escritura por request para `ultima_actividad`). Suficiente para el laboratorio; si se requiere alto rendimiento, cachear la actividad y persistir cada N segundos.
 
 ## Reglas de negocio clave (del RF/HU)
 
@@ -264,3 +281,4 @@ Prioridad Media/Baja:
 - No se puede degradar/eliminar al último Administrador activo.
 - Historial y bitácora son inmutables (triggers NF-11).
 - Historial registra: fecha/hora, documento ingresado, empleado (o NULL), área, resultado, motivo, IP y user-agent.
+
