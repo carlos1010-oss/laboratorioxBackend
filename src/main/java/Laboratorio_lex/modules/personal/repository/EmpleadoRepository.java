@@ -17,7 +17,7 @@ public interface EmpleadoRepository
     Optional<Empleado> findByNumeroDocumento(String numeroDocumento);
 
     // Busca un empleado por el código de su tarjeta RFID (Simulador de accesos - F-19)
-    Optional<Empleado> findByCodigoTarjetaRfid(String codigoTarjetaRfid);
+    Optional<Empleado> findByCodigoTarjetaRfidIgnoreCase(String codigoTarjetaRfid);
 
     // Validaciones de existencia antes de registrar o procesar CSV
     boolean existsByNumeroDocumento(String numeroDocumento);

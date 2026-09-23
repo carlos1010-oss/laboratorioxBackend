@@ -16,7 +16,7 @@ public class Rol {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Short id;
+    private Integer id;
 
     @Column(nullable = false, unique = true, length = 30)
     private String nombre; // 'ADMINISTRADOR', 'GESTOR_PERSONAL', 'SUPERVISOR_ACCESOS'

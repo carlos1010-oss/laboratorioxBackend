@@ -33,8 +33,7 @@ public class BitacoraAuditoria {
     private String direccionIp;
 
     @Enumerated(EnumType.STRING)
-    
-    @Column(name = "tipo_operacion", nullable = false, columnDefinition = "tipo_operacion_enum")
+    @Column(name = "tipo_operacion", nullable = false)
     private TipoOperacion tipoOperacion;
 
     @Column(name = "modulo_tabla", nullable = false, length = 100)

@@ -39,7 +39,6 @@ public class HistorialAcceso {
     private AreaRestringida area;
 
     @Enumerated(EnumType.STRING)
-    
     @Column(name = "resultado_acceso", nullable = false)
     private ResultadoAcceso resultado;
 

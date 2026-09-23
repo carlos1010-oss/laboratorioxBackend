@@ -37,7 +37,7 @@ public class PortalPublicoService {
 
         Optional<Empleado> empleadoOpt = tieneDocumento
                 ? empleadoRepository.findByNumeroDocumento(doc)
-                : empleadoRepository.findByCodigoTarjetaRfid(tar);
+                : empleadoRepository.findByCodigoTarjetaRfidIgnoreCase(tar);
 
         if (empleadoOpt.isEmpty()) {
             // Verificar si es un usuario del sistema (Administrador o Supervisor)

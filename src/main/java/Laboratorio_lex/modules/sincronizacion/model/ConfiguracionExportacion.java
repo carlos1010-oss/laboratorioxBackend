@@ -17,7 +17,7 @@ public class ConfiguracionExportacion {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Short id;
+    private Integer id;
 
     // DIARIA | SEMANAL | MENSUAL (CHECK en BD)
     @Column(nullable = false)

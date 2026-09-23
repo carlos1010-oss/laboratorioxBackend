@@ -36,8 +36,7 @@ public class RegistroSincronizacionSocio {
     private String payloadJson;
 
     @Enumerated(EnumType.STRING)
-    
-    @Column(nullable = false)
+    @Column(name = "estado", nullable = false, columnDefinition = "zone_control.estadosincronizacion")
     private EstadoSincronizacion estado;
 
     @Column(name = "intentos_realizados", nullable = false)

@@ -36,8 +36,7 @@ public class Usuario {
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    
-    @Column(nullable = false)
+    @Column(name = "estado", nullable = false, columnDefinition = "zone_control.estadousuario")
     private EstadoUsuario estado;
 
     @Column(name = "intentos_fallidos", nullable = false)

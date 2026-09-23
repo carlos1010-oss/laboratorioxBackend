@@ -14,7 +14,7 @@ import java.time.OffsetDateTime;
 @Builder
 public class ConfiguracionExportacionDTO {
 
-    private Short id;
+    private Integer id;
 
     @NotBlank(message = "La frecuencia es obligatoria")
     private String frecuencia;

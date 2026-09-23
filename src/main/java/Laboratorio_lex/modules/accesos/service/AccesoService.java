@@ -69,7 +69,7 @@ public class AccesoService {
         // 2. Validar existencia del empleado por documento o tarjeta (F-20)
         Optional<Empleado> empleadoOpt = tieneDocumento
                 ? empleadoRepository.findByNumeroDocumento(doc)
-                : empleadoRepository.findByCodigoTarjetaRfid(rfid);
+                : empleadoRepository.findByCodigoTarjetaRfidIgnoreCase(rfid);
 
         // Si no está registrado como empleado operativo, verificar si es usuario del sistema (Administrador o Supervisor)
         if (empleadoOpt.isEmpty()) {

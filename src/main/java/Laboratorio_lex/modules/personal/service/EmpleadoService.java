@@ -147,7 +147,7 @@ public class EmpleadoService {
                         throw new BadRequestException("El código de la tarjeta RFID/NFC es obligatorio (F-19).");
                 }
 
-                empleadoRepository.findByCodigoTarjetaRfid(codigoTarjeta).ifPresent(otro -> {
+                empleadoRepository.findByCodigoTarjetaRfidIgnoreCase(codigoTarjeta).ifPresent(otro -> {
                         if (!otro.getId().equals(id)) {
                                 throw new BadRequestException(
                                                 "La tarjeta RFID/NFC ya está asignada a otro empleado: " + codigoTarjeta);
@@ -201,8 +201,7 @@ public class EmpleadoService {
                 EmpleadoResponseDTO estadoNuevo = convertirADTO(actualizado);
 
                 // Determinar tipo de operación para la bitácora (BLOQUEO / MODIFICACION)
-                TipoOperacion operacion = (nuevoEstado == EstadoEmpleado.INACTIVO
-                                || nuevoEstado == EstadoEmpleado.BLOQUEADO)
+                TipoOperacion operacion = (nuevoEstado == EstadoEmpleado.INACTIVO)
                                 ? TipoOperacion.BLOQUEO
                                 : TipoOperacion.MODIFICACION;
 
@@ -217,7 +216,7 @@ public class EmpleadoService {
                 if (estado != null && estado != EstadoEmpleado.ACTIVO
                                 && (motivo == null || motivo.isBlank())) {
                         throw new BadRequestException(
-                                        "El motivo de cambio de estado es obligatorio cuando el estado es INACTIVO o BLOQUEADO (F-17).");
+                                        "El motivo de cambio de estado es obligatorio cuando el estado es INACTIVO (F-17).");
                 }
         }
 

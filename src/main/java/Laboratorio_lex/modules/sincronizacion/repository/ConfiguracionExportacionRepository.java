@@ -7,7 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface ConfiguracionExportacionRepository extends JpaRepository<ConfiguracionExportacion, Short> {
+public interface ConfiguracionExportacionRepository extends JpaRepository<ConfiguracionExportacion, Integer> {
 
     // Fila única de configuración (sembrada en V2)
     Optional<ConfiguracionExportacion> findFirstByOrderByIdAsc();
