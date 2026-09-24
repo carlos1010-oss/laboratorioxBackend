@@ -39,20 +39,27 @@ public class AccesoService {
     private final AutorizacionZonaRepository autorizacionZonaRepository;
     private final HistorialAccesoRepository historialAccesoRepository;
 
-    // Modo flexible (canal interno): basta documento o tarjeta.
+    // Modo flexible histórico: basta documento o tarjeta (lo usan los tests).
     @Transactional
     public ResultadoAccesoResponseDTO procesarAccesoMolinete(RegistroAccesoRequestDTO dto, String ipOrigen,
             String userAgent) {
-        return procesarAccesoMolinete(dto, ipOrigen, userAgent, false);
+        return procesarAccesoMolinete(dto, ipOrigen, userAgent, false, true);
     }
 
-    // Con exigirDobleFactor=true (kiosco público): se exigen documento Y tarjeta,
-    // y ambos deben pertenecer a la misma persona. La cédula sola no basta (es
-    // pública/adivinable) y la tarjeta sola tampoco (su código es visible en
-    // paneles internos). En este canal no hay acceso maestro de sistema.
+    // Con exigirDobleFactor=true se exigen documento Y tarjeta de la misma persona.
+    // La cédula sola no basta (es pública/adivinable) y la tarjeta sola tampoco
+    // (su código es visible en paneles internos). Con permitirMaestro=true se
+    // conserva el acceso maestro de Administrador/Supervisor para supervisión
+    // (canal interno); el kiosco público opera con (true, false).
     @Transactional
     public ResultadoAccesoResponseDTO procesarAccesoMolinete(RegistroAccesoRequestDTO dto, String ipOrigen,
             String userAgent, boolean exigirDobleFactor) {
+        return procesarAccesoMolinete(dto, ipOrigen, userAgent, exigirDobleFactor, !exigirDobleFactor);
+    }
+
+    @Transactional
+    public ResultadoAccesoResponseDTO procesarAccesoMolinete(RegistroAccesoRequestDTO dto, String ipOrigen,
+            String userAgent, boolean exigirDobleFactor, boolean permitirMaestro) {
 
         String doc = dto.getNumeroDocumento() != null ? dto.getNumeroDocumento().trim() : null;
         String rfid = dto.getCodigoTarjetaRfid() != null ? dto.getCodigoTarjetaRfid().trim() : null;
@@ -82,21 +89,30 @@ public class AccesoService {
                     "El área restringida se encuentra inactiva", dto, ipOrigen, userAgent);
         }
 
-        // 2. Resolver al empleado (F-20). En modo público no hay acceso maestro:
-        // administradores y supervisores validan desde el canal interno.
+        // 2. Resolver al empleado (F-20).
         Empleado empleado;
         if (exigirDobleFactor) {
             Optional<Empleado> porDocumento = empleadoRepository.findByNumeroDocumento(doc);
             Optional<Empleado> porTarjeta = empleadoRepository.findByCodigoTarjetaRfidIgnoreCase(rfid);
-            if (porDocumento.isEmpty() || porTarjeta.isEmpty()) {
+            if (porDocumento.isPresent() && porTarjeta.isPresent()
+                    && porDocumento.get().getId().equals(porTarjeta.get().getId())) {
+                empleado = porDocumento.get();
+            } else {
+                // Sin empleado coincidente: solo el canal interno admite maestro de sistema
+                if (porDocumento.isEmpty() && porTarjeta.isEmpty() && permitirMaestro) {
+                    ResultadoAccesoResponseDTO maestro = responderMaestroSiAplica(area, dto, tieneDocumento, doc,
+                            rfid, ipOrigen, userAgent);
+                    if (maestro != null) {
+                        return maestro;
+                    }
+                }
+                if (porDocumento.isPresent() && porTarjeta.isPresent()) {
+                    return registrarYResponder(porDocumento.get(), null, area, ResultadoAcceso.DENEGADO,
+                            "El documento y la tarjeta no corresponden a la misma persona", dto, ipOrigen, userAgent);
+                }
                 return registrarYResponder(null, null, area, ResultadoAcceso.NO_REGISTRADO,
                         "Combinación de documento y tarjeta no registrada en el sistema", dto, ipOrigen, userAgent);
             }
-            if (!porDocumento.get().getId().equals(porTarjeta.get().getId())) {
-                return registrarYResponder(porDocumento.get(), null, area, ResultadoAcceso.DENEGADO,
-                        "El documento y la tarjeta no corresponden a la misma persona", dto, ipOrigen, userAgent);
-            }
-            empleado = porDocumento.get();
         } else {
             // 2b. Validar existencia del empleado por documento o tarjeta (canal interno)
             Optional<Empleado> empleadoOpt = tieneDocumento
@@ -105,28 +121,10 @@ public class AccesoService {
 
             // Si no está registrado como empleado operativo, verificar si es usuario del sistema (Administrador o Supervisor)
             if (empleadoOpt.isEmpty()) {
-                String identificador = tieneDocumento ? doc : rfid;
-                Optional<Usuario> usuarioOpt = usuarioRepository.findByDocumento(identificador)
-                        .or(() -> usuarioRepository.findByCorreo(identificador));
-
-                if (usuarioOpt.isPresent()) {
-                    Usuario usuario = usuarioOpt.get();
-                    String rolNombre = usuario.getRol() != null ? usuario.getRol().getNombre() : "";
-
-                    if (usuario.getEstado() != EstadoUsuario.ACTIVO) {
-                        return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
-                                "Usuario del sistema bloqueado o inactivo (" + usuario.getEstado() + ")", dto, ipOrigen, userAgent);
-                    }
-
-                    if ("ADMINISTRADOR".equalsIgnoreCase(rolNombre) || "SUPERVISOR_ACCESOS".equalsIgnoreCase(rolNombre)) {
-                        // Acceso Maestro para Administradores y Supervisores
-                        return registrarYResponder(null, usuario, area, ResultadoAcceso.AUTORIZADO,
-                                "Acceso maestro autorizado (" + rolNombre + ")", dto, ipOrigen, userAgent);
-                    } else {
-                        return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
-                                "El rol del usuario (" + rolNombre + ") no tiene permisos de acceso a áreas de laboratorio",
-                                dto, ipOrigen, userAgent);
-                    }
+                ResultadoAccesoResponseDTO maestro = responderMaestroSiAplica(area, dto, tieneDocumento, doc, rfid,
+                        ipOrigen, userAgent);
+                if (maestro != null) {
+                    return maestro;
                 }
 
                 return registrarYResponder(null, null, area, ResultadoAcceso.NO_REGISTRADO,
@@ -173,6 +171,43 @@ public class AccesoService {
         return historialAccesoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "timestamp")).stream()
                 .map(this::convertirADTO)
                 .collect(Collectors.toList());
+    }
+
+    // Acceso maestro para usuarios del sistema (solo canal interno con maestro
+    // permitido). Retorna null si el identificador no es de un usuario interno.
+    private ResultadoAccesoResponseDTO responderMaestroSiAplica(
+            AreaRestringida area,
+            RegistroAccesoRequestDTO dto,
+            boolean tieneDocumento,
+            String doc,
+            String rfid,
+            String ipOrigen,
+            String userAgent) {
+
+        String identificador = tieneDocumento ? doc : rfid;
+        Optional<Usuario> usuarioOpt = usuarioRepository.findByDocumento(identificador)
+                .or(() -> usuarioRepository.findByCorreo(identificador));
+
+        if (usuarioOpt.isEmpty()) {
+            return null;
+        }
+
+        Usuario usuario = usuarioOpt.get();
+        String rolNombre = usuario.getRol() != null ? usuario.getRol().getNombre() : "";
+
+        if (usuario.getEstado() != EstadoUsuario.ACTIVO) {
+            return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
+                    "Usuario del sistema bloqueado o inactivo (" + usuario.getEstado() + ")", dto, ipOrigen, userAgent);
+        }
+
+        if ("ADMINISTRADOR".equalsIgnoreCase(rolNombre) || "SUPERVISOR_ACCESOS".equalsIgnoreCase(rolNombre)) {
+            return registrarYResponder(null, usuario, area, ResultadoAcceso.AUTORIZADO,
+                    "Acceso maestro autorizado (" + rolNombre + ")", dto, ipOrigen, userAgent);
+        }
+
+        return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
+                "El rol del usuario (" + rolNombre + ") no tiene permisos de acceso a áreas de laboratorio",
+                dto, ipOrigen, userAgent);
     }
 
     private ResultadoAccesoResponseDTO registrarYResponder(

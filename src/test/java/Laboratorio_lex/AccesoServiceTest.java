@@ -94,4 +94,36 @@ class AccesoServiceTest {
         assertEquals(ResultadoAcceso.NO_REGISTRADO, response.getResultado());
         assertEquals("AMARILLO", response.getColor());
     }
+
+    @Test
+    @DisplayName("Canal interno con doble factor conserva acceso maestro del Administrador")
+    void testDobleFactorInternoMantieneMaestro() {
+        RegistroAccesoRequestDTO dto = RegistroAccesoRequestDTO.builder()
+                .numeroDocumento("0000000001")
+                .codigoTarjetaRfid("TARJETA-INEXISTENTE")
+                .areaId(1)
+                .build();
+
+        ResultadoAccesoResponseDTO response = accesoService.procesarAccesoMolinete(
+                dto, "127.0.0.1", "JUnit-Test-Agent", true, true);
+
+        assertNotNull(response);
+        assertEquals(ResultadoAcceso.AUTORIZADO, response.getResultado());
+    }
+
+    @Test
+    @DisplayName("Canal público con doble factor no aplica acceso maestro del Administrador")
+    void testDobleFactorPublicoSinMaestro() {
+        RegistroAccesoRequestDTO dto = RegistroAccesoRequestDTO.builder()
+                .numeroDocumento("0000000001")
+                .codigoTarjetaRfid("TARJETA-INEXISTENTE")
+                .areaId(1)
+                .build();
+
+        ResultadoAccesoResponseDTO response = accesoService.procesarAccesoMolinete(
+                dto, "127.0.0.1", "JUnit-Test-Agent", true, false);
+
+        assertNotNull(response);
+        assertEquals(ResultadoAcceso.NO_REGISTRADO, response.getResultado());
+    }
 }

@@ -34,7 +34,8 @@ public class AccesoController {
             HttpServletRequest request) {
         String ipOrigen = obtenerIpOrigen(request);
         String userAgent = request.getHeader("User-Agent");
-        return ResponseEntity.ok(accesoService.procesarAccesoMolinete(dto, ipOrigen, userAgent, false));
+        // Canal interno: doble factor para empleados + maestro para Admin/Supervisor
+        return ResponseEntity.ok(accesoService.procesarAccesoMolinete(dto, ipOrigen, userAgent, true, true));
     }
 
     // F-24: historial filtrado por documento, área y rango de fechas
