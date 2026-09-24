@@ -1,7 +1,7 @@
 # Zone Control — Progreso del Backend
 
 > Documento de continuidad para retomar el trabajo en otra sesión sin contexto previo.
-> Última actualización: Fase 8 completada (Despliegue exitoso en Render y Aiven PostgreSQL en producción con Flyway V1-V5). RF funcionales (F-01..F-35) del backlog cubiertos salvo F-25-PDF (aplazado intencionalmente).
+> Última actualización: Fase 9 completada (Molinete público / kiosco para empleados sin login: nuevo GET /api/publico/areas + página /molinete en frontend). RF funcionales (F-01..F-35) del backlog cubiertos salvo F-25-PDF (aplazado intencionalmente).
 
 ## Ubicación y stack
 
@@ -252,14 +252,34 @@ Evidencia de la verificación en vivo:
 3. F-05 verificado: `POST /api/auth/recuperar-password` genera token temporal de un solo uso con persistencia en `tokens_recuperacion`, y rechazo inmediato ante reuso. ✔
 4. Despliegue en Render exitoso: Servicio activo en `https://laboratorio-zone-control.onrender.com` con Swagger UI (`/swagger-ui.html`) y Tomcat en puerto 10000. ✔
 
+## Estado: Fase 9 — COMPLETADA (Molinete público para empleados sin login — kiosco /molinete)
+
+Aclaración de dominio: la **asignación** de tarjeta sigue siendo administrativa (`PUT /api/personal/empleados/{id}/tarjeta`, ADMINISTRADOR/GESTOR_PERSONAL), pero la **validación** en puerta no puede pedir JWT de admin porque el empleado operativo (`empleados`) no tiene usuario ni contraseña (solo `usuarios` hace login). Se separó el canal operativo del administrativo.
+
+Cambios hechos:
+- **Backend** `modules/portal/controller/PortalPublicoController`: nuevo `GET /api/publico/areas` que devuelve `areaRestringidaService.listar(true)` (solo activas, ordenadas por nombre). Sin cambio en `SecurityConfig` porque `/api/publico/**` ya es `permitAll`. El kiosco ya podía validar con `POST /api/publico/accesos/molinete` (F-35, `ResultadoAccesoPublicoDTO` sin datos personales); le faltaba el catálogo de áreas sin login.
+- **Frontend** nueva página pública `src/app/molinete/page.tsx` (fuera de `/dashboard`, `'use client'`, sin `useAuth`): formulario documento/tarjeta + select de área (carga de `GET /publico/areas`), `fetch` directo sin `Authorization` a `POST /publico/accesos/molinete`, semáforo VERDE/ROJO/AMARILLO + motivo + área + fecha. No expone `nombreEmpleado`.
+- **Frontend** `src/middleware.ts`: `validPublicRoutes` pasa de `['/', '/login']` a `['/', '/login', '/molinete']`; sin esto el Edge redirigía el kiosco a `/`.
+- **Frontend** `src/app/RootClient.tsx` (landing `/`): botón secundario "Validar ingreso" → `/molinete` junto a "Portal Operativo" → `/login`. Es el punto visible para Juan sin autenticarse.
+- No se tocó `POST /api/accesos/molinete` (interno, con JWT y DTO completo para supervisión) ni la gestión de tarjetas en `EmpleadoController`.
+
+Evidencia de la verificación:
+1. `.\mvnw.cmd -o compile -DskipTests` → `BUILD SUCCESS` (103 fuentes, Java 21). ✔
+2. `PortalPublicoController` compila con la nueva dependencia `AreaRestringidaService` + `GET /areas` (revisión de código, sin despliegue aún). ✔
+3. Frontend verificado por lectura (archivos creados + middleware + link en landing); **pendiente** `pnpm exec tsc --noEmit` / `pnpm build` porque la máquina actual no tiene Node/pnpm en PATH. ✔/pendiente
+4. Flujo esperado: admin asigna tarjeta una vez en dashboard → Juan abre `/molinete` sin login → valida → historial queda registrado con IP/user-agent igual que el canal interno. ✔ (lógica reutiliza `AccesoService.procesarAccesoMolinete`)
+
+> Decisiones/riesgos Fase 9: se crea página adicional en vez de reutilizar `dashboard/simulador` porque el simulador exige token+rol, vive en `DashboardLayout` y devuelve datos personales; abrirlo rompería RBAC. El kiosco público hereda el riesgo F-35 ya documentado (enumeración de documentos/tarjetas vía `registrado:true/false` sin datos personales); en producción real aplicar rate-limiting. El catálogo público expone solo áreas activas (id/código/nombre/nivel/estado), sin información sensible.
+
 ## Backlog pendiente (por RF/HU)
 
 Prioridad Alta:
 - (ninguno de F-01..F-35 queda pendiente; la única pieza aplazada es el formato PDF de F-25 — ver decisión arriba)
 
 Prioridad Media/Baja:
-- Integración con el Frontend Next.js en Vercel (apuntar `NEXT_PUBLIC_API_URL` a `https://laboratorio-zone-control.onrender.com`).
+- Integración con el Frontend Next.js en Vercel (apuntar `NEXT_PUBLIC_API_URL` a `https://laboratorio-zone-control.onrender.com`; incluir la nueva ruta pública `/molinete` como kiosco sin login).
 - Configuración de credenciales SMTP reales para envío de correos fuera del modo demo.
+- Validar en local `pnpm exec tsc --noEmit` + `pnpm build` del frontend (Fase 9 solo verificada por lectura; la máquina de implementación no tenía Node/pnpm) y prueba E2E del kiosco contra Render.
 
 ## Bugs conocidos / decisiones pendientes
 
@@ -272,6 +292,7 @@ Prioridad Media/Baja:
 7. ~~Error en compilación Docker por flag -o~~ RESUELTO en Fase 8: `mvn clean package`.
 8. Flyway 9.22.3 advierte que PostgreSQL 18 no está probado (funciona y valida correctamente las 5 migraciones en Aiven).
 9. La sesión se valida contra BD en cada petición (una escritura por request para `ultima_actividad`). Suficiente para el laboratorio; si se requiere alto rendimiento, cachear la actividad y persistir cada N segundos.
+10. Fase 9 deja el kiosco `/molinete` sin rate-limit ni API key por dispositivo (igual que el resto de `/api/publico/**`); si se expone en producción real, añadir throttle/CAPTCHA y considerar `modules/dispositivos` con `X-Device-Key` + IP allowlist.
 
 ## Reglas de negocio clave (del RF/HU)
 
@@ -281,4 +302,5 @@ Prioridad Media/Baja:
 - No se puede degradar/eliminar al último Administrador activo.
 - Historial y bitácora son inmutables (triggers NF-11).
 - Historial registra: fecha/hora, documento ingresado, empleado (o NULL), área, resultado, motivo, IP y user-agent.
+- Empleados operativos no hacen login (solo `usuarios` internos); la validación en puerta usa el canal público `/api/publico/**` sin JWT y sin exponer datos personales, mientras la asignación de tarjetas y la supervisión usan el canal privado con RBAC.
 

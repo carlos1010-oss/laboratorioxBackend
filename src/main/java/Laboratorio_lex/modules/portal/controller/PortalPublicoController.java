@@ -4,6 +4,8 @@ import Laboratorio_lex.modules.accesos.dto.RegistroAccesoRequestDTO;
 import Laboratorio_lex.modules.accesos.dto.ResultadoAccesoPublicoDTO;
 import Laboratorio_lex.modules.accesos.dto.ResultadoAccesoResponseDTO;
 import Laboratorio_lex.modules.accesos.service.AccesoService;
+import Laboratorio_lex.modules.catalogos.dto.AreaRestringidaResponseDTO;
+import Laboratorio_lex.modules.catalogos.service.AreaRestringidaService;
 import Laboratorio_lex.modules.portal.dto.VerificacionIngresoDTO;
 import Laboratorio_lex.modules.portal.service.PortalPublicoService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,6 +13,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 // F-35: portal público (sin autenticación). Permite simular el acceso del
 // molinete y verificar si una persona está registrada, sin exponer datos
@@ -22,6 +26,12 @@ public class PortalPublicoController {
 
     private final AccesoService accesoService;
     private final PortalPublicoService portalPublicoService;
+    private final AreaRestringidaService areaRestringidaService;
+
+    @GetMapping("/areas")
+    public ResponseEntity<List<AreaRestringidaResponseDTO>> listarAreasActivas() {
+        return ResponseEntity.ok(areaRestringidaService.listar(true));
+    }
 
     @PostMapping("/accesos/molinete")
     public ResponseEntity<ResultadoAccesoPublicoDTO> simularAcceso(
