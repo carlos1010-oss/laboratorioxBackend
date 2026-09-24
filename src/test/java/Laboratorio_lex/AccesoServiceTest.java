@@ -1,5 +1,6 @@
 package Laboratorio_lex;
 
+import Laboratorio_lex.common.exception.BadRequestException;
 import Laboratorio_lex.modules.accesos.dto.RegistroAccesoRequestDTO;
 import Laboratorio_lex.modules.accesos.dto.ResultadoAccesoResponseDTO;
 import Laboratorio_lex.modules.accesos.model.ResultadoAcceso;
@@ -63,5 +64,34 @@ class AccesoServiceTest {
 
         assertEquals("0000000001", dto.getNumeroDocumento());
         assertEquals("0000000001", dto.getDocumento());
+    }
+
+    @Test
+    @DisplayName("Doble factor: debe exigir documento y tarjeta juntos en el canal público")
+    void testDobleFactorExigeAmbos() {
+        RegistroAccesoRequestDTO dto = RegistroAccesoRequestDTO.builder()
+                .numeroDocumento("0000000001")
+                .areaId(1)
+                .build();
+
+        assertThrows(BadRequestException.class, () -> accesoService.procesarAccesoMolinete(
+                dto, "127.0.0.1", "JUnit-Test-Agent", true));
+    }
+
+    @Test
+    @DisplayName("Doble factor: combinación desconocida retorna NO_REGISTRADO")
+    void testDobleFactorCombinacionDesconocida() {
+        RegistroAccesoRequestDTO dto = RegistroAccesoRequestDTO.builder()
+                .numeroDocumento("999999999999")
+                .codigoTarjetaRfid("TARJETA-INEXISTENTE")
+                .areaId(1)
+                .build();
+
+        ResultadoAccesoResponseDTO response = accesoService.procesarAccesoMolinete(
+                dto, "127.0.0.1", "JUnit-Test-Agent", true);
+
+        assertNotNull(response);
+        assertEquals(ResultadoAcceso.NO_REGISTRADO, response.getResultado());
+        assertEquals("AMARILLO", response.getColor());
     }
 }

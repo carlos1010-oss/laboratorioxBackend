@@ -41,7 +41,7 @@ public class PortalPublicoController {
         String ipOrigen = obtenerIpOrigen(request);
         String userAgent = request.getHeader("User-Agent");
 
-        ResultadoAccesoResponseDTO interno = accesoService.procesarAccesoMolinete(dto, ipOrigen, userAgent);
+        ResultadoAccesoResponseDTO interno = accesoService.procesarAccesoMolinete(dto, ipOrigen, userAgent, true);
         return ResponseEntity.ok(ResultadoAccesoPublicoDTO.desdeInterno(interno));
     }
 

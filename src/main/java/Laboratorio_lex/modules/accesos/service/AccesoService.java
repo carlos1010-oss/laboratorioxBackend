@@ -39,9 +39,20 @@ public class AccesoService {
     private final AutorizacionZonaRepository autorizacionZonaRepository;
     private final HistorialAccesoRepository historialAccesoRepository;
 
+    // Modo flexible (canal interno): basta documento o tarjeta.
     @Transactional
     public ResultadoAccesoResponseDTO procesarAccesoMolinete(RegistroAccesoRequestDTO dto, String ipOrigen,
             String userAgent) {
+        return procesarAccesoMolinete(dto, ipOrigen, userAgent, false);
+    }
+
+    // Con exigirDobleFactor=true (kiosco público): se exigen documento Y tarjeta,
+    // y ambos deben pertenecer a la misma persona. La cédula sola no basta (es
+    // pública/adivinable) y la tarjeta sola tampoco (su código es visible en
+    // paneles internos). En este canal no hay acceso maestro de sistema.
+    @Transactional
+    public ResultadoAccesoResponseDTO procesarAccesoMolinete(RegistroAccesoRequestDTO dto, String ipOrigen,
+            String userAgent, boolean exigirDobleFactor) {
 
         String doc = dto.getNumeroDocumento() != null ? dto.getNumeroDocumento().trim() : null;
         String rfid = dto.getCodigoTarjetaRfid() != null ? dto.getCodigoTarjetaRfid().trim() : null;
@@ -49,7 +60,12 @@ public class AccesoService {
         boolean tieneDocumento = doc != null && !doc.isBlank();
         boolean tieneTarjeta = rfid != null && !rfid.isBlank();
 
-        if (!tieneDocumento && !tieneTarjeta) {
+        if (exigirDobleFactor) {
+            if (!tieneDocumento || !tieneTarjeta) {
+                throw new BadRequestException(
+                        "Para validar su ingreso debe indicar el número de documento y el código de la tarjeta RFID");
+            }
+        } else if (!tieneDocumento && !tieneTarjeta) {
             throw new BadRequestException("Debe ingresar el número de documento o el código de la tarjeta RFID");
         }
 
@@ -66,42 +82,59 @@ public class AccesoService {
                     "El área restringida se encuentra inactiva", dto, ipOrigen, userAgent);
         }
 
-        // 2. Validar existencia del empleado por documento o tarjeta (F-20)
-        Optional<Empleado> empleadoOpt = tieneDocumento
-                ? empleadoRepository.findByNumeroDocumento(doc)
-                : empleadoRepository.findByCodigoTarjetaRfidIgnoreCase(rfid);
+        // 2. Resolver al empleado (F-20). En modo público no hay acceso maestro:
+        // administradores y supervisores validan desde el canal interno.
+        Empleado empleado;
+        if (exigirDobleFactor) {
+            Optional<Empleado> porDocumento = empleadoRepository.findByNumeroDocumento(doc);
+            Optional<Empleado> porTarjeta = empleadoRepository.findByCodigoTarjetaRfidIgnoreCase(rfid);
+            if (porDocumento.isEmpty() || porTarjeta.isEmpty()) {
+                return registrarYResponder(null, null, area, ResultadoAcceso.NO_REGISTRADO,
+                        "Combinación de documento y tarjeta no registrada en el sistema", dto, ipOrigen, userAgent);
+            }
+            if (!porDocumento.get().getId().equals(porTarjeta.get().getId())) {
+                return registrarYResponder(porDocumento.get(), null, area, ResultadoAcceso.DENEGADO,
+                        "El documento y la tarjeta no corresponden a la misma persona", dto, ipOrigen, userAgent);
+            }
+            empleado = porDocumento.get();
+        } else {
+            // 2b. Validar existencia del empleado por documento o tarjeta (canal interno)
+            Optional<Empleado> empleadoOpt = tieneDocumento
+                    ? empleadoRepository.findByNumeroDocumento(doc)
+                    : empleadoRepository.findByCodigoTarjetaRfidIgnoreCase(rfid);
 
-        // Si no está registrado como empleado operativo, verificar si es usuario del sistema (Administrador o Supervisor)
-        if (empleadoOpt.isEmpty()) {
-            String identificador = tieneDocumento ? doc : rfid;
-            Optional<Usuario> usuarioOpt = usuarioRepository.findByDocumento(identificador)
-                    .or(() -> usuarioRepository.findByCorreo(identificador));
+            // Si no está registrado como empleado operativo, verificar si es usuario del sistema (Administrador o Supervisor)
+            if (empleadoOpt.isEmpty()) {
+                String identificador = tieneDocumento ? doc : rfid;
+                Optional<Usuario> usuarioOpt = usuarioRepository.findByDocumento(identificador)
+                        .or(() -> usuarioRepository.findByCorreo(identificador));
 
-            if (usuarioOpt.isPresent()) {
-                Usuario usuario = usuarioOpt.get();
-                String rolNombre = usuario.getRol() != null ? usuario.getRol().getNombre() : "";
+                if (usuarioOpt.isPresent()) {
+                    Usuario usuario = usuarioOpt.get();
+                    String rolNombre = usuario.getRol() != null ? usuario.getRol().getNombre() : "";
 
-                if (usuario.getEstado() != EstadoUsuario.ACTIVO) {
-                    return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
-                            "Usuario del sistema bloqueado o inactivo (" + usuario.getEstado() + ")", dto, ipOrigen, userAgent);
+                    if (usuario.getEstado() != EstadoUsuario.ACTIVO) {
+                        return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
+                                "Usuario del sistema bloqueado o inactivo (" + usuario.getEstado() + ")", dto, ipOrigen, userAgent);
+                    }
+
+                    if ("ADMINISTRADOR".equalsIgnoreCase(rolNombre) || "SUPERVISOR_ACCESOS".equalsIgnoreCase(rolNombre)) {
+                        // Acceso Maestro para Administradores y Supervisores
+                        return registrarYResponder(null, usuario, area, ResultadoAcceso.AUTORIZADO,
+                                "Acceso maestro autorizado (" + rolNombre + ")", dto, ipOrigen, userAgent);
+                    } else {
+                        return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
+                                "El rol del usuario (" + rolNombre + ") no tiene permisos de acceso a áreas de laboratorio",
+                                dto, ipOrigen, userAgent);
+                    }
                 }
 
-                if ("ADMINISTRADOR".equalsIgnoreCase(rolNombre) || "SUPERVISOR_ACCESOS".equalsIgnoreCase(rolNombre)) {
-                    // Acceso Maestro para Administradores y Supervisores
-                    return registrarYResponder(null, usuario, area, ResultadoAcceso.AUTORIZADO,
-                            "Acceso maestro autorizado (" + rolNombre + ")", dto, ipOrigen, userAgent);
-                } else {
-                    return registrarYResponder(null, usuario, area, ResultadoAcceso.DENEGADO,
-                            "El rol del usuario (" + rolNombre + ") no tiene permisos de acceso a áreas de laboratorio",
-                            dto, ipOrigen, userAgent);
-                }
+                return registrarYResponder(null, null, area, ResultadoAcceso.NO_REGISTRADO,
+                        "Persona no registrada en el sistema", dto, ipOrigen, userAgent);
             }
 
-            return registrarYResponder(null, null, area, ResultadoAcceso.NO_REGISTRADO,
-                    "Persona no registrada en el sistema", dto, ipOrigen, userAgent);
+            empleado = empleadoOpt.get();
         }
-
-        Empleado empleado = empleadoOpt.get();
 
         // 3. Validar estado del empleado
         if (empleado.getEstado() != EstadoEmpleado.ACTIVO) {
