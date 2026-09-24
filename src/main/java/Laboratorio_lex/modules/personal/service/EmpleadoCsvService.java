@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,8 +32,12 @@ public class EmpleadoCsvService {
     // Columnas de la plantilla estandarizada (F-13, F-14)
     private static final String[] CABECERAS = {
             "tipo_documento", "numero_documento", "nombres", "apellidos",
-            "correo", "telefono", "codigo_departamento", "estado", "motivo_cambio_estado"
+            "correo", "telefono", "codigo_departamento", "codigo_tarjeta_rfid",
+            "estado", "motivo_cambio_estado"
     };
+
+    // Límite de seguridad para no saturar memoria en archivos gigantes
+    private static final long TAMANO_MAXIMO_BYTES = 5L * 1024 * 1024;
 
     private static final Set<String> TIPOS_DOCUMENTO = Set.of("CC", "CE", "PASAPORTE", "PPT", "TI");
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
@@ -46,8 +49,8 @@ public class EmpleadoCsvService {
     public String generarPlantillaCsv() {
         StringBuilder sb = new StringBuilder();
         sb.append(String.join(",", CABECERAS)).append("\n");
-        sb.append("CC,1020304050,Juan,Perez,juan.perez@laboratorioxyz.com,3001234567,DEP-PROD,ACTIVO,\n");
-        sb.append("CE,1020304051,Maria,Gomez,maria.gomez@laboratorioxyz.com,3007654321,DEP-CAL,ACTIVO,\n");
+        sb.append("CC,1020304050,Juan,Perez,juan.perez@laboratorioxyz.com,3001234567,DEP-PROD,RFID-001,ACTIVO,\n");
+        sb.append("CE,1020304051,Maria,Gomez,maria.gomez@laboratorioxyz.com,3007654321,DEP-CAL,RFID-002,ACTIVO,\n");
         return sb.toString();
     }
 
@@ -55,6 +58,9 @@ public class EmpleadoCsvService {
     public ImportacionResultadoDTO importEmpleadosDesdeCsv(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("El archivo CSV enviado está vacío.");
+        }
+        if (file.getSize() > TAMANO_MAXIMO_BYTES) {
+            throw new BadRequestException("El archivo supera el tamaño máximo permitido de 5 MB.");
         }
 
         List<String> errores = new ArrayList<>();
@@ -64,13 +70,29 @@ public class EmpleadoCsvService {
         Set<String> documentosEnArchivo = new HashSet<>();
         Set<String> tarjetasEnArchivo = new HashSet<>();
 
+        // Compatibilidad real: Excel en español guarda con BOM UTF-8 y con ';'.
+        // Se normaliza el contenido antes de parsear para no rechazar archivos válidos.
+        String texto;
+        try {
+            texto = new String(file.getBytes(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new BadRequestException("No fue posible leer el archivo CSV.");
+        }
+        if (!texto.isEmpty() && texto.charAt(0) == '\uFEFF') {
+            texto = texto.substring(1);
+        }
+        String primeraLinea = texto.lines().filter(l -> !l.isBlank()).findFirst().orElse("");
+        long puntoComas = primeraLinea.chars().filter(c -> c == ';').count();
+        long comas = primeraLinea.chars().filter(c -> c == ',').count();
+        char delimitador = puntoComas > comas ? ';' : ',';
+
         CSVFormat formato = CSVFormat.DEFAULT.builder()
+                .setDelimiter(delimitador)
                 .setTrim(true)
                 .setIgnoreEmptyLines(true)
                 .build();
 
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
+        try (BufferedReader reader = new BufferedReader(new java.io.StringReader(texto));
                 CSVParser parser = formato.parse(reader)) {
 
             Iterator<CSVRecord> iterador = parser.iterator();
